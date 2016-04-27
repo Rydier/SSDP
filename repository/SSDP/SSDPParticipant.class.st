@@ -10,7 +10,6 @@ Class {
 	#name : #SSDPParticipant,
 	#superclass : #Object,
 	#instVars : [
-		'socket',
 		'sockets'
 	],
 	#category : #SSDP
@@ -100,55 +99,7 @@ SSDPParticipant >> ipv6Port [
 	^2869
 ]
 
-{ #category : #private }
-SSDPParticipant >> localAddresses: aFamily [
-	"Pharo has removed all support classes and calls to the ipv6-aware primitives, 
-	amongst them the ones needed to find local interfaces.
-	Inline their use here, so it works for both Pharo and Squeak"
-	"aFamily:
-	1 = ipv6
-	2 = ipv4"
-
-	| ipOffsets protocol type host aPort result addr rawAddress |
-	"ipv4 address found from 13-16 in address object, ipv6 from 15-32 "
-	ipOffsets := #(
-		[15 32]
-		[13 16]).
-		"Protocol:
-	1 = TCP
-	2 = UDP
-	Type:
-	1 = Streaming
-	2 = Datagram"
-	protocol := 2.
-	type := protocol .
-	"Obviously, we can't just pass in '' to mean all local addresses, that either resolves to the 'let OS decide' or loopback address depending on flags... So we need to jump some hoops to get the actual network interfaces based on localHostName."
-	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
-	host := NetNameResolver localHostName.
-	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	host := (host copyUpToLast: $.) , '.local'.
-	NetNameResolver initializeNetwork.
-			NetNameResolver
-				primGetAddressInfoHost: host
-				service: aPort asString "Obviously, the port number must be passed to primitive as string, lest the primitive crash"
-				flags: 0
-				family: 2 "IPv4"
-				type: type
-				protocol: protocol.
-			result := OrderedCollection new.
-			[ |addrSize info|
-			addrSize := NetNameResolver primGetAddressInfoSize.
-	addrSize < 0 ifTrue: [^result].
-	addr := ByteArray new: addrSize.
-	NetNameResolver primGetAddressInfoResult: addr.
-	rawAddress := addr copyFrom: (ipOffsets at: aFamily) first to: (ipOffsets at: aFamily) last.
-	NetNameResolver primGetAddressInfoNext.
-	result add: rawAddress
-			]
-				repeat
-]
-
-{ #category : #private }
+{ #category : #'private - interface enumeration' }
 SSDPParticipant >> localAddresses: aFamily port: aPort [
 	"Pharo has removed all support classes and calls to the ipv6-aware primitives, 
 	amongst them the ones needed to find local interfaces.
@@ -162,7 +113,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 
 	| ipOffsets protocol type host result |
 	"ipv4 address found from 13-16 in address object, ipv6 from 15-32 "
-	ipOffsets := #(#'[' 15 32 #']' #'[' 13 16 #']').
+	ipOffsets := #(#[ 15 32 ] #[ 13 16 ]).
 	"Protocol:
 	1 = TCP
 	2 = UDP
@@ -197,7 +148,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	result add: rawAddress ] repeat
 ]
 
-{ #category : #private }
+{ #category : #'private - interface enumeration' }
 SSDPParticipant >> localV4Addresses [
 	"Pharo has removed all support classes and calls to the ipv6-aware primitives, 
 	amongst them the ones needed to find local interfaces.

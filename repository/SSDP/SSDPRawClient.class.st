@@ -12,7 +12,7 @@ As a Service's USN will always identify it uniquely,  we hold a cache of the cur
 Thus, a user must initialize me with the service type it is interested in and two callbacks.
 Sample usage:
 |client|
-client := SSDPClient v4SiteLocal.
+client := SSDPRawClient v4SiteLocal.
 client filter: 'ssdp:all' 
 	whenAvailable: [ :resource | resource printOn: Transcript.
 		'is available' logCr. ]
@@ -24,12 +24,10 @@ Class {
 	#name : #SSDPRawClient,
 	#superclass : #SSDPParticipant,
 	#instVars : [
-		'availableHandler',
-		'unavailableHandler',
 		'receiveWindow',
 		'discoveryProcess',
-		'listenerProcess',
-		'cache'
+		'cache',
+		'listenerProcesses'
 	],
 	#category : #SSDP
 }
@@ -43,7 +41,7 @@ SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
 			service validDuration > 3 seconds] 
 				whileTrue: [(service validDuration - 1) wait].
 		"See if we are able to re-discover the service"
-		self discover: service serviceType.
+		self discover: service serviceType handleBy: [:aService |].
 		service validDuration < 3 seconds ifTrue: [
 		"Nope, we really do have to announce it removed" 
 		byebyeHandler value: (cache remove: service) ]
@@ -56,34 +54,81 @@ SSDPRawClient >> discover: aServiceType [
 	"Send an explicit message indicating that services implementing aType should notify me they are available"
 
 	| discoverSocket buffer latestArrivalTime |
-	"Use a separate socket to run discovery; this way we don't accidentally receive discovery responses in the regular listener."
-	discoverSocket := Socket newUDP.
-	discoverSocket
-		sendUDPData:
+	"Use a separate socket to run discovery; this way we don't accidentally receive discovery responses in the regular listeners."
+	sockets
+		do:
+			[ :aSocket | 
+			discoverSocket := Socket newUDP.
+			"somehow, find the local interface that aSocket was setup to listen to multicast announcements from, so we can bind the discoverSocket to send over it here..."
+			[ discoverSocket bindTo: aSocket port: aSocket ]
+				yourself.
+			discoverSocket
+				sendUDPData:
+					(self
+						discoveryRequest: aServiceType
+						receivingAnswersIn: receiveWindow)
+				toHost: aSocket remoteAddress
+				port: aSocket remotePort.
+			latestArrivalTime := (DateAndTime now 
+				+ receiveWindow asSeconds) .
+			buffer := ByteArray new: 1024.
+			[ | dataAndSize |
+			discoverSocket
+				waitForDataForMsecs: (latestArrivalTime - DateAndTime now) asMilliSeconds
+				ifClosed: nil
+				ifTimedOut: [ ^ nil ].	"Never gonna happen, UDP baby"
+			"TODO: Extract datagram reading, use same method in listener process"
+			dataAndSize := self
+				readDatagramFrom: discoverSocket
+				using: buffer.
 			(self
-				discoveryRequest: aServiceType
-				receivingAnswersIn: receiveWindow)
-		toHost: socket remoteAddress
-		port: socket remotePort.
-	latestArrivalTime := DateAndTime now asSeconds + receiveWindow.
-	buffer := ByteArray new: 1024.
-	[ | status read fullDatagram |
-	discoverSocket
-		waitForDataFor: latestArrivalTime - DateAndTime now asSeconds
-		ifTimedOut: [ ^ nil ].
-	"TODO: Extract datagram reading, use same method in listener process"
-	status := discoverSocket receiveUDPDataInto: buffer.
-	read := status at: 1.
-	[ (status at: 4)
-		and: [ fullDatagram := buffer copyFrom: 1 to: read.
-			true ] ]
-		whileTrue:
-			[ status := discoverSocket receiveUDPDataInto: buffer.
-			fullDatagram := fullDatagram
-				, (buffer copyFrom: 1 to: (status at: 1)).
-			(self updateCache: (SSDPService readFromDiscovery: fullDatagram))
-				ifNotNil: [ :service | availableHandler value: service ] ] ]
-		repeat
+				updateCache:
+					(SSDPService
+						readDiscovery: dataAndSize first
+						size: dataAndSize last))
+				ifNotNil: [ :service | availableHandler value: service ] ]
+				repeat ]
+]
+
+{ #category : #private }
+SSDPRawClient >> discover: aServiceType handleBy: aHandler [
+	"Send an explicit message indicating that services implementing aType should notify me they are available"
+
+	| discoverSocket buffer latestArrivalTime |
+	"Use a separate socket to run discovery; this way we don't accidentally receive discovery responses in the regular listeners."
+	sockets
+		do:
+			[ :aSocket | 
+			discoverSocket := Socket newUDP.
+			"somehow, find the local interface that aSocket was setup to listen to multicast announcements from, so we can bind the discoverSocket to send over it here..."
+			[ discoverSocket bindTo: aSocket port: aSocket ]
+				yourself.
+			discoverSocket
+				sendUDPData:
+					(self
+						discoveryRequest: aServiceType
+						receivingAnswersIn: receiveWindow)
+				toHost: aSocket remoteAddress
+				port: aSocket remotePort.
+			latestArrivalTime := (DateAndTime now 
+				+ receiveWindow asSeconds) .
+			buffer := ByteArray new: 1024.
+			[ | dataAndSize |
+			discoverSocket
+				waitForDataForMsecs: (latestArrivalTime - DateAndTime now) asMilliSeconds
+				ifClosed: nil
+				ifTimedOut: [ ^ nil ].	"Never gonna happen, UDP baby"
+			"TODO: Extract datagram reading, use same method in listener process"
+			dataAndSize := self
+				readDatagramFrom: discoverSocket
+				using: buffer.
+			(self
+				updateCache:
+					(SSDPService
+						readDiscovery: dataAndSize first
+						size: dataAndSize last))
+				ifNotNil: [ :service | aHandler value: service ] ]
+				repeat ]
 ]
 
 { #category : #'private - requests' }
@@ -107,13 +152,18 @@ ST:', searchTarget, '
 
 { #category : #'initialize - release' }
 SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
-	listenerProcess ifNotNil: [ listenerProcess terminate ].
-	listenerProcess := self
-		newListenerProcessFor: aSearchTarget
-		available: aHandler
-		unavailable: anotherHandler.
-	listenerProcess resume.
-	self performDiscovery: aSearchTarget
+	listenerProcesses ifNotNil: [ listenerProcesses do: #terminate ].
+
+	listenerProcesses := sockets
+		collect:
+			[ :aSocket | 
+			self
+				newListenerProcessFor: aSearchTarget
+				on: aSocket
+				available: aHandler
+				unavailable: anotherHandler ].
+	listenerProcesses do: #resume.
+	self discover: aSearchTarget handleBy: aHandler
 ]
 
 { #category : #'initialize - release' }
@@ -124,27 +174,42 @@ SSDPRawClient >> initialize [
 ]
 
 { #category : #processes }
-SSDPRawClient >> newListenerProcessFor: aSearchTarget available: whenAvailableOrAlive unavailable: whenByeBye [
-	^ [ | status read buffer fullDatagram |
-	fullDatagram := buffer := String new: 1024.
-	[ |resource| socket waitForData.
-	status := socket receiveUDPDataInto: buffer.
-	read := status at: 1.
-	[ (status at: 4)
-		and: [ fullDatagram := buffer copyFrom: 1 to: read.
-	true ] ]
-		whileTrue:
-			[ status := socket receiveUDPDataInto: buffer.
-	fullDatagram := fullDatagram
-		, (buffer copyFrom: 1 to: (status at: 1)).
-	read := read + (status at: 1) ].
-	resource := SSDPService readFrom: fullDatagram size: read.
-	(self updateCache: resource) ifNotNil: [ 
-	resource isAvailable ifTrue: [ 
-	whenAvailableOrAlive value: resource]ifFalse: [whenByeBye value: resource ]]. ]
-		repeat ] newProcess
+SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whenAvailableOrAlive unavailable: whenByeBye [
+	^ [ | buffer |
+	buffer := String new: 1024.
+	[ | dataAndSize resource |
+	aSocket waitForData.
+	dataAndSize := self readDatagramFrom: aSocket using: buffer.
+	resource := SSDPService readNotify: dataAndSize first size: dataAndSize last.
+	(self updateCache: resource)
+		ifNotNil:
+			[ 
+			resource isAvailabilityNotification
+				ifTrue: [ whenAvailableOrAlive value: resource ].
+			resource isUnavailabilityNotification
+				ifTrue: [ whenByeBye value: resource ] 
+				] ] repeat 
+	] newProcess
 		priority: Processor userBackgroundPriority;
 		yourself
+]
+
+{ #category : #private }
+SSDPRawClient >> readDatagramFrom: discoverSocket using: buffer [
+	| fullDatagram status read |
+	fullDatagram := buffer.
+	status := discoverSocket receiveUDPDataInto: buffer.
+	read := status at: 1.
+	(status at: 4)
+		ifTrue: [ fullDatagram := buffer copyFrom: 1 to: read ].
+	[ status at: 4 ]
+		whileTrue:
+			[ status := discoverSocket receiveUDPDataInto: buffer.
+			read := read + (status at: 1).
+			fullDatagram := fullDatagram
+				, (buffer copyFrom: 1 to: (status at: 1)) ].
+	^ {fullDatagram.
+	read}
 ]
 
 { #category : #accessing }
@@ -156,5 +221,6 @@ SSDPRawClient >> receiveWindow: aNumberOfSeconds [
 SSDPRawClient >> updateCache: aService [
 	"Add if aService isAvailable and not yet in cache, remove if aService isUnavailable and in cache.
 	In all other cases, return nil"
-	self notYetImplemented
+	"For testing, assume nothing is cached"
+	^aService
 ]

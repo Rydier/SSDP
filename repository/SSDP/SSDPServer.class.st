@@ -20,8 +20,8 @@ Class {
 	#superclass : #SSDPParticipant,
 	#instVars : [
 		'service',
-		'serverProcess',
-		'aliveProcess'
+		'discoveryProcesses',
+		'keepAliveProcesses'
 	],
 	#category : #SSDP
 }
@@ -40,6 +40,27 @@ SSDPServer >> aliveResponse: serviceType [
 	'') .].
 	^('NOTIFY * HTTP/1.1
    Host: 239.255.255.250:reservedSSDPport
+   NT: ', serviceType ,'
+   NTS: ssdp:alive
+   USN: ', serviceType , ':' , self uuid,'
+   Cache-Control: max-age = ', self cacheTime asSeconds printString,'
+') withInternetLineEndings
+]
+
+{ #category : #'as yet unclassified' }
+SSDPServer >> aliveResponse: serviceType for: aSocket [
+	"The ping we send periodically to notify clients we are still here"
+	
+	[String crlf join: #('NOTIFY * HTTP/1.1'
+   'Host: 239.255.255.250:reservedSSDPport'
+   'NT: blenderassociation:blender'
+   'NTS: ssdp:alive'
+   'USN: someunique:idscheme3'
+   'AL: <blender:ixl><http://foo/bar>'
+   'Cache-Control: max-age = 7393'
+	'') .].
+	^('NOTIFY * HTTP/1.1
+   Host: ', aSocket localAddress asString, ':', aSocket localPort asString, '
    NT: ', serviceType ,'
    NTS: ssdp:alive
    USN: ', serviceType , ':' , self uuid,'
@@ -92,9 +113,9 @@ SSDPServer >> discoveryResponse: serviceType [
 { #category : #'initialize - release' }
 SSDPServer >> service: aServiceIdentifier availableAt: aURI [
 	service := SSDPService type: aServiceIdentifier location: aURI.
-	serverProcess := self
-		newDiscoveryListenerProcessFor: service.
-	aliveProcess := self newKeepAliveProcessFor: service.
+	discoveryProcesses := sockets collect: [:aSocket | self
+		newDiscoveryResponderProcessFor: service on: aSocket].
+	keepAliveProcesses := sockets collect: [:aSocket | self newKeepAliveProcessFor: service on: aSocket].
 	
 ]
 
