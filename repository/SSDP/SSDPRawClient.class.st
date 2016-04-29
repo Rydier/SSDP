@@ -29,7 +29,7 @@ Class {
 		'cache',
 		'listenerProcesses'
 	],
-	#category : #SSDP
+	#category : #'SSDP-Client'
 }
 
 { #category : #processes }
@@ -53,40 +53,39 @@ SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
 SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 	"Send an explicit message indicating that services implementing aType should notify me they are available"
 
-	| discoverSocket buffer latestArrivalTime |
-	"Use a separate socket to run discovery; this way we don't accidentally receive discovery responses in the regular listeners."
-	sockets
+	| buffer |
+	buffer := ByteArray new: 1024.
+	sendingSockets
 		do:
-			[ :aSocket | |realRemoteAddress|
-			discoverSocket := Socket newUDP.
-			"somehow, find the local interface that aSocket was setup to listen to multicast announcements from, so we can bind the discoverSocket to send over it here..."
-			discoverSocket bindTo: aSocket localAddress port: 0.
-			discoverSocket
+			[ : discoverySocket | |remoteAddress remotePort latestArrivalTime| 
+			"Reading discovery replies will set remoteAddress/Port to that of the source of the datagram
+			So we need to preserve the initial values to be able to run discovery multiple times."
+			remoteAddress := discoverySocket remoteAddress.
+			remotePort := discoverySocket remotePort.
+			discoverySocket
 				sendUDPData:
 					(self
 						discoveryRequest: aServiceType
 						receivingAnswersIn: receiveWindow)
-				toHost: aSocket remoteAddress
-				port: aSocket remotePort.
+				toHost: remoteAddress
+				port: remotePort.
 			latestArrivalTime := (DateAndTime now 
 				+ receiveWindow asSeconds) .
-			buffer := ByteArray new: 1024.
-			[ | dataAndSize |
-			discoverSocket
+			
+			[ | datagram |
+			discoverySocket
 				waitForDataForMsecs: (latestArrivalTime - DateAndTime now) asMilliSeconds
 				ifClosed: nil
 				ifTimedOut: [ ^ nil ].	"Never gonna happen, UDP baby"
-			"TODO: Extract datagram reading, use same method in listener process"
-			dataAndSize := self
-				readDatagramFrom: discoverSocket
+			datagram :=  self
+				readDatagramFrom: discoverySocket
 				using: buffer.
 			(self
 				updateCache:
-					(SSDPService
-						readDiscovery: dataAndSize first
-						size: dataAndSize last))
+					(SSDPDiscoveryReply fromDatagram: datagram))
 				ifNotNil: [ :service | aHandler value: service ] ]
-				repeat ]
+				repeat.
+			discoverySocket setPeer: remoteAddress port: remotePort ]
 ]
 
 { #category : #'private - requests' }
@@ -100,6 +99,7 @@ SSDPRawClient >> discoveryRequest: searchTarget receivingAnswersIn: receiveWindo
    'MX:1'
    'ST:ssdp:all'
    '')].
+	"TODO: make host reliant on socket type"
 	^('M-SEARCH * HTTP/1.1
 HOST:239.255.255.250:1900
 MAN:"ssdp:discover"
@@ -112,7 +112,7 @@ ST:', searchTarget, '
 SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
 	listenerProcesses ifNotNil: [ listenerProcesses do: #terminate ].
 	self discover: aSearchTarget handleBy: aHandler.
-	listenerProcesses := sockets
+	listenerProcesses := listeningSockets
 		collect:
 			[ :aSocket | 
 			self
@@ -132,49 +132,24 @@ SSDPRawClient >> initialize [
 ]
 
 { #category : #processes }
-SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whenAvailableOrAlive unavailable: whenByeBye [
+SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whenAvailable unavailable: whenByeBye [
 	^ [ | buffer |
 
 	buffer := String new: 1024.
-	[ | dataAndSize resource |
+	[ | datagram notification |
 	aSocket waitForData.
-	dataAndSize := self readDatagramFrom: aSocket using: buffer.
-	resource := SSDPService readNotify: dataAndSize first size: dataAndSize last.
-	(self updateCache: resource)
+	datagram := self readDatagramFrom: aSocket using: buffer.
+	notification := SSDPMessage from: datagram .
+	(notification serviceChangeIn: cache)
 		ifNotNil:
-			[ 
-			resource isAvailabilityNotification
-				ifTrue: [ whenAvailableOrAlive value: resource ].
-			resource isUnavailabilityNotification
-				ifTrue: [ whenByeBye value: resource ] 
-				] ] repeat 
+			[ :service | 
+			notification deliver: service 
+				ifAvailable: whenAvailable
+				ifUnavailable: whenByeBye ] 
+				 ] repeat 
 	] newProcess
 		priority: Processor userBackgroundPriority;
 		yourself
-]
-
-{ #category : #private }
-SSDPRawClient >> readDatagramFrom: aSocket using: buffer [
-	| fullDatagram status read realAddress realPort|
-	"Receiving data will change remoteAddress to the actual sender.
-	Make sure we reset to the multicast-address when datagram has been read, so sending messages will work as expected"
-
-	realAddress := aSocket remoteAddress.
-	realPort := aSocket remotePort.
-	fullDatagram := buffer.
-	status := aSocket receiveUDPDataInto: buffer.
-	read := status at: 1.
-	(status at: 4)
-		ifTrue: [ fullDatagram := buffer copyFrom: 1 to: read ].
-	[ status at: 4 ]
-		whileTrue:
-			[ status := aSocket receiveUDPDataInto: buffer.
-			read := read + (status at: 1).
-			fullDatagram := fullDatagram
-				, (buffer copyFrom: 1 to: (status at: 1)) ].
-	aSocket setPeer: realAddress port: realPort.
-	^ {fullDatagram.
-	read}
 ]
 
 { #category : #accessing }
@@ -190,7 +165,7 @@ SSDPRawClient >> updateCache: aService [
 	"For testing, assume nothing is cached"
 
 	[ aService isAvailabilityNotification
-		ifTrue: [ ^ cache updateLocationOf: aService ].
+		ifTrue: [ ^ cache updatePositionOfService: aService ].
 	aService isUnavailabilityNotification
 		ifTrue: [ ^ cache removeService: aService ] ].
 	^ aService

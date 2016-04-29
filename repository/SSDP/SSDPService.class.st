@@ -1,40 +1,32 @@
 "
-An SSDPService is some resource avilable at a defined location.
+An SSDPService is some resource avilable at a defined location; the three most important properties are:
+- Service type: String : The type of service I offer.
+- UniqueServiceName: String : An unique identifier of this particular service.
+- Location : URL Where the service can be accessed. 
 
+notificationSubtype/available really doesn't belong in the Service itself;  the class should be refactored into SSDPNotification classes (discovery / alive / byebye ) , which can then be used to update actual SSDPService's.
 
 "
 Class {
 	#name : #SSDPService,
 	#superclass : #Object,
 	#instVars : [
-		'location',
-		'discoveryTime',
-		'maxAge',
 		'serviceType',
 		'uniqueServiceName',
+		'location',
 		'serverInfo',
+		'discoveryTime',
+		'maxAge',
 		'available',
 		'notificationTypeSub'
 	],
-	#category : #SSDP
+	#category : #'SSDP-Core'
 }
-
-{ #category : #'instance creation' }
-SSDPService class >> readDiscovery: aDatagram size: datagramSize [
-	"Used by clients to parse the replies to discovery requests"
-	^self new initializeDiscovery: aDatagram ofSize: datagramSize 
-]
-
-{ #category : #'instance creation' }
-SSDPService class >> readNotify: aDatagram size: datagramSize [
-	"Used by clients to parse replies that availability of a service has changed"
-	^self new initializeNotify: aDatagram ofSize: datagramSize 
-]
 
 { #category : #'instance creation' }
 SSDPService class >> type: aServiceType location: aServiceLocation [
 	"Used by server to initialize the service it offers"
-	self notYetImplemented 
+	self new initializeWithType: aServiceType at: aServiceLocation
 ]
 
 { #category : #comparing }
@@ -43,9 +35,45 @@ SSDPService >> = anotherObject [
 	
 ]
 
+{ #category : #'server messages' }
+SSDPService >> aliveResponseFor: aSocket [
+	"The ping we send periodically to notify clients we are still here"
+	
+	^('NOTIFY * HTTP/1.1
+   Host: ', aSocket remoteAddress, ':' , aSocket remotePort, ' 
+   NT: ', serviceType ,'
+   NTS: ssdp:alive
+   USN: ', uniqueServiceName ,'
+   Cache-Control: max-age = ', maxAge asSeconds printString,'
+') withInternetLineEndings
+]
+
+{ #category : #'server messages' }
+SSDPService >> byebyeResponseFor: aSocket [
+	"The ping we send when shutting down to notify clients we can no longer provide services"
+	
+	^('NOTIFY * HTTP/1.1
+   Host: ', aSocket remoteAddress, ':' , aSocket remotePort, ' 
+   NT: ', serviceType ,'
+   NTS: ssdp:byebye
+   USN: ', uniqueServiceName, '
+') withInternetLineEndings
+]
+
 { #category : #accessing }
 SSDPService >> cacheExpiry [ 
 	^self discoveryTime + self maxAge asDuration
+]
+
+{ #category : #'server messages' }
+SSDPService >> discoveryResponse [
+	^('HTTP/1.1 200 OK
+   ST: ', serviceType ,'
+   USN: ', serviceType , ':' , self uuid,'
+	Server: ', self serviceLocation, '
+	Cache-Control: max-age = ', maxAge asSecond printString,'
+	') withInternetLineEndings
+	
 ]
 
 { #category : #accessing }
@@ -59,70 +87,16 @@ SSDPService >> hash [
 ]
 
 { #category : #'initialize - release' }
-SSDPService >> initializeDiscovery: aDatagram ofSize: datagramSize [
+SSDPService >> initializeWithType: aServiceType at: aServiceLocation [
+	"For current purposes, identify services uniquely by the hash of their location.
+	Saves us a lot of trouble wrt. maintaining identity of services after restarts etc.
+	(But of course means, if our services location changes, it is registed as a wholly new service)"
+	|locationHash|
+	serviceType := aServiceType.
+	location := aServiceLocation asUrl.
+	locationHash := (SHA256 new hashStream: aServiceLocation readStream) first: 16.
+	uniqueServiceName := 'uuid:', locationHash hex asLowercase, ':', aServiceLocation 
 	
-	| response cacheParams |
-	response := ZnResponse readFrom: aDatagram readStream.
-	"If the response was not 200 OK, we are required to disregard it"
-	response status = 200 ifFalse: [ ^nil ].
-	notificationTypeSub := 'ssdp:discovery'.
-	"Obligatory SSDP fields"
-	serviceType := response headers at: 'St'.
-	uniqueServiceName := response headers at: 'Usn'.
-	"Common SSDP fields"
-	serverInfo := response headers at: 'Server' ifAbsent: nil.
-	location := response headers at: 'Location' ifAbsent: nil.
-	"Cache control fields"
-		"TODO: Convert time field when present to DateAndTime"
-	discoveryTime := response headers at:'Date' ifAbsent: [ DateAndTime now].
-	
-	cacheParams := $, split: ((response headers at: 'Cache-control' ifAbsent: [''])) .
-	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber.
-	
-
-
-	
-	
-]
-
-{ #category : #'initialize - release' }
-SSDPService >> initializeNotify: aDatagram ofSize: datagramSize [
-	
-	| stream headers cacheParams |
-	stream := aDatagram readStream.
-	stream nextLine trim = 'NOTIFY * HTTP/1.1' ifFalse: [ ^nil ].
-	headers := ZnHeaders readFrom: stream.
-	"Obligatory SSDP notify fields"
-	serviceType :=  headers at: 'Nt'.
-	notificationTypeSub := headers at: 'Nts'.
-	uniqueServiceName :=  headers at: 'Usn'.
-	"Cache control fields"
-	"TODO: Convert to DateAndTime if actually present"
-	discoveryTime :=  headers at:'Date' ifAbsent: [ DateAndTime now].
-	cacheParams := $, split: (( headers at: 'Cache-control' ifAbsent: [''])) .
-	"Could also be communicated through Expiry field, only support maxAge for now"
-	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber asSeconds.
-	"Common SSDP notify fields"
-	
-	serverInfo :=  headers at: 'Server' ifAbsent: nil.
-	location :=  headers at: 'Location' ifAbsent: nil.
-	
-
-
-	
-	
-]
-
-{ #category : #testing }
-SSDPService >> isAvailabilityNotification [
-	"header"
-	^#('ssdp:alive' 'ssdp:discovery') includes: notificationTypeSub 
-]
-
-{ #category : #testing }
-SSDPService >> isUnavailabilityNotification [
-	
-	^#'ssdp:byebye' = notificationTypeSub 
 ]
 
 { #category : #accessing }
@@ -134,6 +108,23 @@ SSDPService >> location [
 SSDPService >> maxAge [
 	"The maximum amount of time since time of discovery this entry should be cached/relied upon"
 	^maxAge
+]
+
+{ #category : #updating }
+SSDPService >> merge: aNotification [
+	uniqueServiceName
+		ifNotNil:
+			[ :usn | 
+			usn = aNotification uniqueServiceName
+				ifFalse: [ ^ self error: 'Cannot merge data from notification with different identity!' ] ].
+	"Obligatory notification data"
+	serviceType := aNotification serviceType.
+	uniqueServiceName := aNotification uniqueServiceName.
+	discoveryTime := aNotification discoveryTime.
+	maxAge := aNotification maxAge.
+	aNotification serverInfo ifNotNil: [ :info | serverInfo := info ].
+	"Common SSDP fields"
+	aNotification location ifNotNil: [ :loc | location := loc ]
 ]
 
 { #category : #printing }
@@ -157,11 +148,4 @@ SSDPService >> serviceType [
 SSDPService >> uniqueServiceName [
 	"The maximum amount of time since time of discovery this entry should be cached/relied upon"
 	^uniqueServiceName
-]
-
-{ #category : #actions }
-SSDPService >> updateCacheExpiryFrom: aService [
-	self = aService ifFalse: [ ^self error: 'Not a refresh of the same service' ].
-	discoveryTime := aService discoveryTime.
-	maxAge := aService maxAge.
 ]

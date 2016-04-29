@@ -5,5 +5,5 @@ An AnnouncingSSDPClient delivers Announcements to those who have registered inte
 Class {
 	#name : #AnnouncingSSDPClient,
 	#superclass : #Object,
-	#category : #SSDP
+	#category : #'SSDP-Client'
 }

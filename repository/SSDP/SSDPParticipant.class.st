@@ -10,9 +10,10 @@ Class {
 	#name : #SSDPParticipant,
 	#superclass : #Object,
 	#instVars : [
-		'sockets'
+		'listeningSockets',
+		'sendingSockets'
 	],
-	#category : #SSDP
+	#category : #'SSDP-Core'
 }
 
 { #category : #'as yet unclassified' }
@@ -44,21 +45,25 @@ SSDPParticipant class >> v6SiteLocal [
 SSDPParticipant >> initializev4SiteLocal [
 	"Set up a socket to listen/send search requests on the IPv4 site local multicast address 239.255.255.250"
 
-	sockets := self localV4Addresses
-		collect:
+	listeningSockets := OrderedCollection new.
+	sendingSockets := OrderedCollection new.
+	self localV4Addresses
+		do:
 			[ :IPv4InterfaceAddress | 
-			| aSocket |
-			aSocket := Socket newUDP.
-			aSocket setOption: 'SO_REUSEADDR' value: true.
-			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port"
-		
-			"We need to tell the OS we are interested in packets that arrive at our local interface.
-	(Might need something more )"
-			aSocket setOption: 'IP_ADD_MEMBERSHIP' value: #[239 255 255 250] , IPv4InterfaceAddress.
-			"We want to send data to the SSDP broadcast"
-			aSocket setPeer: #[239 255 255 250] port: self ipv4Port.
-				aSocket bindTo: IPv4InterfaceAddress port: self ipv4Port.
-			aSocket ]
+			| listeningSocket sendingSocket |
+			listeningSocket := Socket newUDP.
+			listeningSocket setOption: 'SO_REUSEADDR' value: true.
+			listeningSocket bindTo: IPv4InterfaceAddress port: 0.
+			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
+			We need to tell the OS we are interested in packets that arrive at our local interface."
+			listeningSocket
+				setOption: 'IP_ADD_MEMBERSHIP'
+				value: #[239 255 255 250] , IPv4InterfaceAddress.
+			listeningSockets add: listeningSocket.
+			sendingSocket := Socket newUDP.
+			"We want to send data to the SSDP broadcast address"
+			sendingSocket setPeer: #[239 255 255 250] port: self ipv4Port.
+			sendingSockets add: sendingSocket ]
 ]
 
 { #category : #'initialize - release' }
@@ -156,4 +161,27 @@ SSDPParticipant >> localV4Addresses [
 	amongst them the ones needed to find local interfaces.
 	Inline their use here, so it works for both Pharo and Squeak"
 	^self localAddresses: 2 port: self ipv4Port.
+]
+
+{ #category : #private }
+SSDPParticipant >> readDatagramFrom: aSocket using: buffer [
+	| fullDatagram status read |
+	"Receiving data will change remoteAddress to the actual sender.
+	Senders who care about aSockets values of these are responsible for preserving/restoring them."
+	
+	fullDatagram := buffer.
+	status := aSocket receiveUDPDataInto: buffer.
+	read := status at: 1.
+	(status at: 4)
+		ifTrue: [ fullDatagram := buffer copyFrom: 1 to: read ].
+	[ status at: 4 ]
+		whileTrue:
+			[ status := aSocket receiveUDPDataInto: buffer.
+			read := read + (status at: 1).
+			fullDatagram := fullDatagram
+				, (buffer copyFrom: 1 to: (status at: 1)) ].
+	"We can safely return the fullDatagram without the amount read, since all SSDP messages use http header format, which
+	are always terminated with an empty line. So there's no chance for a compliant header parser to mistakenly read past that point"
+	^fullDatagram.
+	
 ]

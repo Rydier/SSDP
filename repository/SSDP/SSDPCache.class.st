@@ -1,7 +1,7 @@
 "
 SSDPCache holds Services in an order sorted by their expiry time.
 The two public methods are 
-updatePositionOfService: and removeService: , used for availability/unavailability notifications respectively.
+updateServiceFor: and removeService: , used to keep cache current with availability/unavailability notifications respectively.
 "
 Class {
 	#name : #SSDPCache,
@@ -9,7 +9,7 @@ Class {
 	#instVars : [
 		'serviceType'
 	],
-	#category : #SSDP
+	#category : #'SSDP-Client'
 }
 
 { #category : #'as yet unclassified' }
@@ -22,61 +22,67 @@ SSDPCache >> initializeType: aType [
 	serviceType := aType
 ]
 
-{ #category : #accessing }
-SSDPCache >> linkOfService: aService ifAbsent: errorBlock [
+{ #category : #private }
+SSDPCache >> linkOfServiceRelatedTo: aNotification ifAbsent: errorBlock [
 	"Find the link containing service with same uniqueServiceName"
 		| aLink |
 	aLink := firstLink.
 	[aLink == nil ] whileFalse:
-		[aLink value = aService ifTrue: [ ^aLink ].
+		[(aNotification relatedTo: aLink value) ifTrue: [ ^aLink ].
 		aLink := aLink nextLink].
 	^errorBlock value
 ]
 
-{ #category : #accessing }
-SSDPCache >> matchesType: aService [
+{ #category : #private }
+SSDPCache >> matchesType: aNotification [
 	^ serviceType = 'ssdp:all'
-		or: [ serviceType = aService serviceType ]
+		or: [ serviceType = aNotification serviceType ]
 ]
 
 { #category : #accessing }
-SSDPCache >> removeService: aService [
+SSDPCache >> removeService: aNotification [
 	|currentLink|
 	currentLink :=firstLink.
-	currentLink value  = aService  
-		ifTrue: [ firstLink  := currentLink nextLink.
+	(aNotification relatedTo: currentLink value) 
+		ifTrue: [ firstLink := currentLink nextLink.
 				firstLink ifNil: [ lastLink := nil ]]
 		ifFalse: [|ourLink| 
 			[ currentLink nextLink == nil or: 
-				[currentLink nextLink value  = aService ]] 
+				[aNotification relatedTo: currentLink nextLink value]] 
 		   		whileFalse: [currentLink := currentLink nextLink].
 			ourLink := currentLink nextLink.
 			ourLink ifNotNil: [ currentLink nextLink: ourLink nextLink.
 				ourLink == lastLink ifTrue: [ lastLink := currentLink] ].
-			currentLink := ourLink. ].
-					
+			currentLink := ourLink. ].	
 
-	^currentLink == nil ifTrue: [ nil] ifFalse: [ currentLink value ]
+	^currentLink == nil ifFalse: [ currentLink value ]
 ]
 
 { #category : #accessing }
-SSDPCache >> updatePositionOfService: aService [
-	| currentLink nextLink actualService |
-	(self matchesType: aService)
+SSDPCache >> updateServiceFor: aNotification [
+	"Check matching type, and if absent, add and return new service then add if absent, or move according to updated timeout value"
+	| currentLink newService|
+	(self matchesType: aNotification)
 		ifFalse: [ ^ nil ].
 	currentLink := self
-		linkOfService: aService
-		ifAbsent: [ self addFirst: (Link new value: aService) ].
+		linkOfServiceRelatedTo: aNotification
+		ifAbsent: [ newService := aNotification asService.
+				self addFirst: (ValueLink value: newService) ].
+
+	currentLink value merge: aNotification.
+	self updateServicePosition: currentLink.
+	^ newService
+]
+
+{ #category : #private }
+SSDPCache >> updateServicePosition: startLink [
+	| currentLink actualService |
+	currentLink := startLink.
 	actualService := currentLink value.
-	actualService updateCacheExpiryFrom: aService.
-	[ nextLink := currentLink nextLink.
-	(nextLink notNil
-		and:
-			[ nextLink value cacheExpiry
-				< actualService cacheExpiry ])
-		whileFalse:
-			[ currentLink value: nextLink value.
+	[ | nextLink |
+	nextLink := currentLink nextLink.
+	(nextLink notNil and: [ nextLink value cacheExpiry < actualService cacheExpiry ])
+		whileFalse: [ currentLink value: nextLink value.
 			nextLink value: actualService.
-			currentLink := nextLink ] ].
-	^ currentLink
+			currentLink := nextLink ] ]
 ]

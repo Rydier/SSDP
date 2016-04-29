@@ -11,9 +11,23 @@ Sample usage:
 |server|
 server := SSDPServer v4SiteLocal.
 server 
-	service: 'ssdp:testService'
+	serviceNamed: 'ssdp:testService'
 	availableAt: 'http:/test.local/'.
 server stop.
+
+or the more elaborate. but flexible:
+
+service := SSDPService 
+	named: 'ssdp:testService' 
+	at: http:/test.local/'.
+service serverInfo: 'My super server!'.
+
+server := SSDPServer v4SiteLocal.
+server offerService: service.
+
+server stop.
+
+
 "
 Class {
 	#name : #SSDPServer,
@@ -23,67 +37,31 @@ Class {
 		'discoveryProcesses',
 		'keepAliveProcesses'
 	],
-	#category : #SSDP
+	#category : #'SSDP-Server'
 }
 
-{ #category : #'private - responses' }
-SSDPServer >> aliveResponse: serviceType [
-	"The ping we send periodically to notify clients we are still here"
-	
-	[String crlf join: #('NOTIFY * HTTP/1.1'
-   'Host: 239.255.255.250:reservedSSDPport'
-   'NT: blenderassociation:blender'
-   'NTS: ssdp:alive'
-   'USN: someunique:idscheme3'
-   'AL: <blender:ixl><http://foo/bar>'
-   'Cache-Control: max-age = 7393'
-	'') .].
-	^('NOTIFY * HTTP/1.1
-   Host: 239.255.255.250:reservedSSDPport
-   NT: ', serviceType ,'
-   NTS: ssdp:alive
-   USN: ', serviceType , ':' , self uuid,'
-   Cache-Control: max-age = ', self cacheTime asSeconds printString,'
-') withInternetLineEndings
+{ #category : #'instance creation' }
+SSDPServer class >> offerServiceType: aServiceType atLocation: aLocation [
+	^ self
+		offerService:
+			(SSDPService
+				ofType: 'ssdp:testService'
+				atLocation: 'http:/test.local/')
 ]
 
-{ #category : #'as yet unclassified' }
-SSDPServer >> aliveResponse: serviceType for: aSocket [
-	"The ping we send periodically to notify clients we are still here"
-	
-	[String crlf join: #('NOTIFY * HTTP/1.1'
-   'Host: 239.255.255.250:reservedSSDPport'
-   'NT: blenderassociation:blender'
-   'NTS: ssdp:alive'
-   'USN: someunique:idscheme3'
-   'AL: <blender:ixl><http://foo/bar>'
-   'Cache-Control: max-age = 7393'
-	'') .].
-	^('NOTIFY * HTTP/1.1
-   Host: ', aSocket localAddress asString, ':', aSocket localPort asString, '
-   NT: ', serviceType ,'
-   NTS: ssdp:alive
-   USN: ', serviceType , ':' , self uuid,'
-   Cache-Control: max-age = ', self cacheTime asSeconds printString,'
-') withInternetLineEndings
-]
-
-{ #category : #'private - responses' }
-SSDPServer >> byebyeResponse: serviceType [
-	"The ping we send when shutting down to notify clients we can no longer provide services"
-	
-	[String crlf join: #('NOTIFY * HTTP/1.1'
-   'Host: 239.255.255.250:reservedSSDPport'
-   'NT: blenderassociation:blender'
-   'NTS: ssdp:byebye'
-   'USN: someunique:idscheme3'
-   '') .].
-	^('NOTIFY * HTTP/1.1
-   Host: 239.255.255.250:reservedSSDPport
-   NT: ', serviceType ,'
-   NTS: ssdp:byebye
-   USN: ', serviceType , ':' , self uuid,'
-') withInternetLineEndings
+{ #category : #'private - available' }
+SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
+	"Keep telling the client our service is available until we are not, and the thread is terminated."
+	^ [ [ [ aSendingSocket
+		sendUDPData: (service aliveResponseFor: aSendingSocket)
+		toHost: aSendingSocket remoteAddress
+		port: aSendingSocket remotePort.
+	service maxAge // 3 seconds wait ] repeat ]
+		ensure:
+			[ aSendingSocket
+				sendUDPData: (service byebyeResponseFor: aSendingSocket)
+				toHost: aSendingSocket remoteAddress
+				port: aSendingSocket remotePort ] ] newProcess
 ]
 
 { #category : #accessing }
@@ -91,35 +69,73 @@ SSDPServer >> cacheTime [
 	^self notYetImplemented 
 ]
 
-{ #category : #'private - responses' }
-SSDPServer >> discoveryResponse: serviceType [
-	"The response we send when receiving queries for which services we are  able to provide"
+{ #category : #'private - discovery' }
+SSDPServer >> discoveryListeningProcessFor: aService on: aSocket [
+	^[ |buffer dataAndSize|
+		buffer := ByteArray new: 1024.
+		aSocket waitForData.
+	 dataAndSize := self readDatagramFrom: aSocket using: buffer.
+	(self discoveryRequestFor: dataAndSize) 
+		ifNotNil: [:request |
+			self handleDiscoveryRequest: request receivedOn: aSocket] ] newProcess
 
-	[String crlf join: #('HTTP/1.1 200 OK'
-   'S: someunique:idscheme3'
-	'ST: serviceType:id'
-   'USN: someunique:idscheme3'
-	'Server: urlToService'
-	'Cache-Control: max-age = 5000'
-   '') .].
-	^('HTTP/1.1 200 OK
-   ST: ', serviceType ,'
-   USN: ', serviceType , ':' , self uuid,'
-	Server: ', self serviceLocation, '
-	Cache-Control: max-age = ', self cacheTime asSeconds printString,'
-') withInternetLineEndings
+]
+
+{ #category : #'private - discovery' }
+SSDPServer >> discoveryRequestFrom: aDatagram [
+	^ (SSDPDiscoveryRequest
+		fromDatagram: aDatagram)
+		ifNotNil: [ :request | 
+			(request relatesTo: service)
+				ifTrue: [ request ] ]
+]
+
+{ #category : #'private - discovery' }
+SSDPServer >> handleDiscoveryRequest: request receivedOn: aSocket [
+	| destAddress destPort |
+	"We fork off delivery, so we need to remember where we can send reply to client"
+	destAddress := aSocket remoteAddress.
+	destPort := aSocket remotePort.
+	"We should send our response at some random time before the discovery interval elapses"
+	[ request timeout atRandom seconds wait.
+	aSocket
+		sendUDPData: service discoveryResponse
+		toHost: destAddress
+		port: destPort ] forkAt: Processor activeProcess priority + 1
 ]
 
 { #category : #'initialize - release' }
-SSDPServer >> service: aServiceIdentifier availableAt: aURI [
-	service := SSDPService type: aServiceIdentifier location: aURI.
-	discoveryProcesses := sockets collect: [:aSocket | self
-		newDiscoveryResponderProcessFor: service on: aSocket].
-	keepAliveProcesses := sockets collect: [:aSocket | self newKeepAliveProcessFor: service on: aSocket].
+SSDPServer >> offerService: anSSDPService [
+	self stop.
+	service := anSSDPService.
+	discoveryProcesses := listeningSockets
+		collect: [ :discoverySocket | 
+			self discoveryListeningProcessFor: discoverySocket ].
+	keepAliveProcesses := sendingSockets 
+		collect: [:keepAliveSocket | 
+			self aliveAnnouncingProcessOn: keepAliveSocket ].
+	discoveryProcesses do: #resume.
+	keepAliveProcesses do: #resume.
 	
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> offerServiceType: aServiceType atLocation: aLocation [
+	^ self
+		offerService:
+			(SSDPService
+				ofType: 'ssdp:testService'
+				atLocation: 'http:/test.local/')
 ]
 
 { #category : #accessing }
 SSDPServer >> serviceLocation [
 	^self notYetImplemented 
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> stop [
+	service ifNotNil: [ 
+		discoveryProcesses do: #terminate.
+		keepAliveProcesses do: #terminate.]
 ]
