@@ -50,47 +50,6 @@ SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
 ]
 
 { #category : #private }
-SSDPRawClient >> discover: aServiceType [
-	"Send an explicit message indicating that services implementing aType should notify me they are available"
-
-	| discoverSocket buffer latestArrivalTime |
-	"Use a separate socket to run discovery; this way we don't accidentally receive discovery responses in the regular listeners."
-	sockets
-		do:
-			[ :aSocket | 
-			discoverSocket := Socket newUDP.
-			"somehow, find the local interface that aSocket was setup to listen to multicast announcements from, so we can bind the discoverSocket to send over it here..."
-			[ discoverSocket bindTo: aSocket port: aSocket ]
-				yourself.
-			discoverSocket
-				sendUDPData:
-					(self
-						discoveryRequest: aServiceType
-						receivingAnswersIn: receiveWindow)
-				toHost: aSocket remoteAddress
-				port: aSocket remotePort.
-			latestArrivalTime := (DateAndTime now 
-				+ receiveWindow asSeconds) .
-			buffer := ByteArray new: 1024.
-			[ | dataAndSize |
-			discoverSocket
-				waitForDataForMsecs: (latestArrivalTime - DateAndTime now) asMilliSeconds
-				ifClosed: nil
-				ifTimedOut: [ ^ nil ].	"Never gonna happen, UDP baby"
-			"TODO: Extract datagram reading, use same method in listener process"
-			dataAndSize := self
-				readDatagramFrom: discoverSocket
-				using: buffer.
-			(self
-				updateCache:
-					(SSDPService
-						readDiscovery: dataAndSize first
-						size: dataAndSize last))
-				ifNotNil: [ :service | availableHandler value: service ] ]
-				repeat ]
-]
-
-{ #category : #private }
 SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 	"Send an explicit message indicating that services implementing aType should notify me they are available"
 
@@ -98,11 +57,10 @@ SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 	"Use a separate socket to run discovery; this way we don't accidentally receive discovery responses in the regular listeners."
 	sockets
 		do:
-			[ :aSocket | 
+			[ :aSocket | |realRemoteAddress|
 			discoverSocket := Socket newUDP.
 			"somehow, find the local interface that aSocket was setup to listen to multicast announcements from, so we can bind the discoverSocket to send over it here..."
-			[ discoverSocket bindTo: aSocket port: aSocket ]
-				yourself.
+			discoverSocket bindTo: aSocket localAddress port: 0.
 			discoverSocket
 				sendUDPData:
 					(self
@@ -153,7 +111,7 @@ ST:', searchTarget, '
 { #category : #'initialize - release' }
 SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
 	listenerProcesses ifNotNil: [ listenerProcesses do: #terminate ].
-
+	self discover: aSearchTarget handleBy: aHandler.
 	listenerProcesses := sockets
 		collect:
 			[ :aSocket | 
@@ -163,7 +121,7 @@ SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: 
 				available: aHandler
 				unavailable: anotherHandler ].
 	listenerProcesses do: #resume.
-	self discover: aSearchTarget handleBy: aHandler
+
 ]
 
 { #category : #'initialize - release' }
@@ -176,6 +134,7 @@ SSDPRawClient >> initialize [
 { #category : #processes }
 SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whenAvailableOrAlive unavailable: whenByeBye [
 	^ [ | buffer |
+
 	buffer := String new: 1024.
 	[ | dataAndSize resource |
 	aSocket waitForData.
@@ -195,19 +154,25 @@ SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whe
 ]
 
 { #category : #private }
-SSDPRawClient >> readDatagramFrom: discoverSocket using: buffer [
-	| fullDatagram status read |
+SSDPRawClient >> readDatagramFrom: aSocket using: buffer [
+	| fullDatagram status read realAddress realPort|
+	"Receiving data will change remoteAddress to the actual sender.
+	Make sure we reset to the multicast-address when datagram has been read, so sending messages will work as expected"
+
+	realAddress := aSocket remoteAddress.
+	realPort := aSocket remotePort.
 	fullDatagram := buffer.
-	status := discoverSocket receiveUDPDataInto: buffer.
+	status := aSocket receiveUDPDataInto: buffer.
 	read := status at: 1.
 	(status at: 4)
 		ifTrue: [ fullDatagram := buffer copyFrom: 1 to: read ].
 	[ status at: 4 ]
 		whileTrue:
-			[ status := discoverSocket receiveUDPDataInto: buffer.
+			[ status := aSocket receiveUDPDataInto: buffer.
 			read := read + (status at: 1).
 			fullDatagram := fullDatagram
 				, (buffer copyFrom: 1 to: (status at: 1)) ].
+	aSocket setPeer: realAddress port: realPort.
 	^ {fullDatagram.
 	read}
 ]

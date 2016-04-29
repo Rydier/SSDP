@@ -85,9 +85,10 @@ SSDPService >> initializeNotify: aDatagram ofSize: datagramSize [
 	
 	| stream headers cacheParams |
 	stream := aDatagram readStream.
-	stream nextLine = 'NOTIFY * HTTP/1.1' ifFalse: [ ^nil ].
+	stream nextLine trim = 'NOTIFY * HTTP/1.1' ifFalse: [ ^nil ].
 	headers := ZnHeaders readFrom: stream.
 	"Obligatory SSDP notify fields"
+	serviceType :=  headers at: 'Nt'.
 	notificationTypeSub := headers at: 'Nts'.
 	uniqueServiceName :=  headers at: 'Usn'.
 	"Cache control fields"
@@ -96,7 +97,7 @@ SSDPService >> initializeNotify: aDatagram ofSize: datagramSize [
 	"Could also be communicated through Expiry field, only support maxAge for now"
 	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber asSeconds.
 	"Common SSDP notify fields"
-	serviceType :=  headers at: 'St' ifAbsent: nil.
+	
 	serverInfo :=  headers at: 'Server' ifAbsent: nil.
 	location :=  headers at: 'Location' ifAbsent: nil.
 	
@@ -127,6 +128,11 @@ SSDPService >> location [
 SSDPService >> maxAge [
 	"The maximum amount of time since time of discovery this entry should be cached/relied upon"
 	^maxAge
+]
+
+{ #category : #printing }
+SSDPService >> printOn: aStream [
+	uniqueServiceName printOn: aStream
 ]
 
 { #category : #accessing }

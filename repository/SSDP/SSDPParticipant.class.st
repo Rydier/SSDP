@@ -49,13 +49,15 @@ SSDPParticipant >> initializev4SiteLocal [
 			[ :IPv4InterfaceAddress | 
 			| aSocket |
 			aSocket := Socket newUDP.
+			aSocket setOption: 'SO_REUSEADDR' value: true.
 			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port"
-			aSocket bindTo: #[239 255 255 250] port: self ipv4Port.
+		
 			"We need to tell the OS we are interested in packets that arrive at our local interface.
 	(Might need something more )"
 			aSocket setOption: 'IP_ADD_MEMBERSHIP' value: #[239 255 255 250] , IPv4InterfaceAddress.
 			"We want to send data to the SSDP broadcast"
 			aSocket setPeer: #[239 255 255 250] port: self ipv4Port.
+				aSocket bindTo: IPv4InterfaceAddress port: self ipv4Port.
 			aSocket ]
 ]
 
