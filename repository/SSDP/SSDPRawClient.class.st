@@ -186,6 +186,12 @@ SSDPRawClient >> receiveWindow: aNumberOfSeconds [
 SSDPRawClient >> updateCache: aService [
 	"Add if aService isAvailable and not yet in cache, remove if aService isUnavailable and in cache.
 	In all other cases, return nil"
+
 	"For testing, assume nothing is cached"
-	^aService
+
+	[ aService isAvailabilityNotification
+		ifTrue: [ ^ cache updateLocationOf: aService ].
+	aService isUnavailabilityNotification
+		ifTrue: [ ^ cache removeService: aService ] ].
+	^ aService
 ]

@@ -44,6 +44,11 @@ SSDPService >> = anotherObject [
 ]
 
 { #category : #accessing }
+SSDPService >> cacheExpiry [ 
+	^self discoveryTime + self maxAge asDuration
+]
+
+{ #category : #accessing }
 SSDPService >> discoveryTime [
 	^discoveryTime
 ]
@@ -92,6 +97,7 @@ SSDPService >> initializeNotify: aDatagram ofSize: datagramSize [
 	notificationTypeSub := headers at: 'Nts'.
 	uniqueServiceName :=  headers at: 'Usn'.
 	"Cache control fields"
+	"TODO: Convert to DateAndTime if actually present"
 	discoveryTime :=  headers at:'Date' ifAbsent: [ DateAndTime now].
 	cacheParams := $, split: (( headers at: 'Cache-control' ifAbsent: [''])) .
 	"Could also be communicated through Expiry field, only support maxAge for now"
@@ -151,4 +157,11 @@ SSDPService >> serviceType [
 SSDPService >> uniqueServiceName [
 	"The maximum amount of time since time of discovery this entry should be cached/relied upon"
 	^uniqueServiceName
+]
+
+{ #category : #actions }
+SSDPService >> updateCacheExpiryFrom: aService [
+	self = aService ifFalse: [ ^self error: 'Not a refresh of the same service' ].
+	discoveryTime := aService discoveryTime.
+	maxAge := aService maxAge.
 ]
