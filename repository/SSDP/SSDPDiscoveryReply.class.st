@@ -72,6 +72,6 @@ SSDPDiscoveryReply >> serverInfo [
 
 { #category : #handling }
 SSDPDiscoveryReply >> serviceChangeIn: aCache [
-self halt.
+
 	^aCache updateServiceFor: self
 ]
