@@ -48,12 +48,7 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 				on: PrimitiveFailed
 				do:
 					[ [ self offerService: service ] fork ]	"Termination triggered due to unavailability; fork of a restart" ] ]
-		newProcess name: 'SSDP keepalive process'
-]
-
-{ #category : #accessing }
-SSDPServer >> cacheTime [
-	^self notYetImplemented 
+		newProcess name: 'SSDP<server:', service serviceType,'> keepalive process'
 ]
 
 { #category : #'private - discovery' }
@@ -64,7 +59,7 @@ SSDPServer >> discoveryListeningProcessOn: aSocket [
 	datagram := self readDatagramFrom: aSocket using: buffer.
 	(self discoveryRequestFrom: datagram)
 		ifNotNil: [ :request | self handleDiscoveryRequest: request receivedOn: aSocket ] ]
-		repeat ] newProcess name: 'SSDP discovery listener'
+		repeat ] newProcess name: 'SSDP<server:', service serviceType,'> discovery listener'
 ]
 
 { #category : #'private - discovery' }
@@ -72,7 +67,7 @@ SSDPServer >> discoveryRequestFrom: aDatagram [
 	^ (SSDPDiscoveryRequest
 		fromDatagram: aDatagram)
 		ifNotNil: [ :request | 
-			(request relatedTo: service)
+				(service matchesType: request)
 				ifTrue: [ request ] ]
 ]
 
@@ -101,6 +96,7 @@ SSDPServer >> initialize [
 SSDPServer >> offerService: anSSDPService [
 	self shutDown.
 	service := anSSDPService.
+	service serverInfo: self versionInfo.
 	discoveryProcesses := listeningSockets
 		collect: [ :discoverySocket | 
 			self discoveryListeningProcessOn: discoverySocket ].
@@ -121,14 +117,21 @@ SSDPServer >> offerServiceType: aServiceType atLocation: aLocation [
 				atLocation: aLocation)
 ]
 
-{ #category : #accessing }
-SSDPServer >> serviceLocation [
-	^self notYetImplemented 
-]
-
 { #category : #'initialize - release' }
 SSDPServer >> shutDown [
 	service ifNotNil: [ 
 		discoveryProcesses do: #terminate.
 		keepAliveProcesses do: #terminate.]
+]
+
+{ #category : #accessing }
+SSDPServer >> versionInfo [
+	"Only pretend we support SSDP draft spec.
+	uPnP 1.1 has additional requirements, like BOOTID.UPNP.ORG fields in keep-alive messages"
+	| os systemVersion |
+	os := Smalltalk os.
+	systemVersion := SystemVersion current.
+	^ (Smalltalk os platformName reject: [:e | e = Character space]) , '/' , os version , 
+	' ssdp/0.9 ' , 
+	systemVersion type , '/' , systemVersion dottedMajorMinor
 ]

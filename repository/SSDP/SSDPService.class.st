@@ -12,9 +12,7 @@ Class {
 		'location',
 		'serverInfo',
 		'discoveryTime',
-		'maxAge',
-		'available',
-		'notificationTypeSub'
+		'maxAge'
 	],
 	#category : #'SSDP-Core'
 }
@@ -35,12 +33,13 @@ SSDPService >> = anotherObject [
 { #category : #'server messages' }
 SSDPService >> aliveResponseFor: aSocket [
 	"The ping we send periodically to notify clients we are still here"
-	
+	"TODO: Rewrite to take multicastInfo as parameter "
 	^('NOTIFY * HTTP/1.1
 Host: ', (self remoteAddressString: aSocket) , ':' , aSocket remotePort asString, '
 NT: ', serviceType ,'
 NTS: ssdp:alive
 USN: ', uniqueServiceName ,'
+Location: ', location asString , '
 Cache-Control: max-age = ', maxAge asSeconds printString,'
 
 ') withInternetLineEndings
@@ -49,7 +48,7 @@ Cache-Control: max-age = ', maxAge asSeconds printString,'
 { #category : #'server messages' }
 SSDPService >> byebyeResponseFor: aSocket [
 	"The ping we send when shutting down to notify clients we can no longer provide services"
-	
+		"TODO: Rewrite to take multicastInfo as parameter "
 	^('NOTIFY * HTTP/1.1
 Host: ', (self remoteAddressString: aSocket), ':' , aSocket remotePort asString, ' 
 NT: ', serviceType ,'
@@ -68,9 +67,10 @@ SSDPService >> cacheExpiry [
 SSDPService >> discoveryResponse [
 	^('HTTP/1.1 200 OK
 ST: ', serviceType ,'
-USN: ', serviceType , ':' , self uuid,'
-Server: ', self serviceLocation, '
-Cache-Control: max-age = ', maxAge asSecond printString,'
+USN: ',  uniqueServiceName,'
+Location: ', location asString, '
+Server: ', self serverInfo, '
+Cache-Control: max-age = ', maxAge asSeconds printString,'
 
 ') withInternetLineEndings
 	
@@ -109,13 +109,19 @@ SSDPService >> initializeWithType: aServiceType at: aServiceLocation [
 				nextPut: $-;
 				nextPutAll: (locationHex next: 12);
 				nextPutAll: '::';
-				nextPutAll: aServiceLocation ].
+				nextPutAll: aServiceType ].
 	maxAge := 180 seconds
 ]
 
 { #category : #accessing }
 SSDPService >> location [
 	^location
+]
+
+{ #category : #testing }
+SSDPService >> matchesType: aNotification [
+	^ serviceType = 'ssdp:all'
+		or: [ serviceType = aNotification serviceType ]
 ]
 
 { #category : #'accessing - cache validity' }
@@ -159,8 +165,15 @@ SSDPService >> remoteAddressString: aSocket [
 
 { #category : #accessing }
 SSDPService >> serverInfo [
-	"The maximum amount of time since time of discovery this entry should be cached/relied upon"
+	"Some identifier of the server on which service is running.
+	uPnP 1.1 suggests:
+	'OS/version Protocol/version Product/version"
 	^serverInfo
+]
+
+{ #category : #accessing }
+SSDPService >> serverInfo: someInfoString [
+	^serverInfo := someInfoString
 ]
 
 { #category : #accessing }

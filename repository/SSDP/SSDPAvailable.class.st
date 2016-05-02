@@ -58,7 +58,8 @@ SSDPAvailable >> initializeFrom: aDatagram [
 	"Common SSDP notify fields"
 	
 	serverInfo :=  headers at: 'Server' ifAbsent: nil.
-	location :=  headers at: 'Location' ifAbsent: nil.
+	location :=  (headers at: 'Location' ifAbsent: nil) ifNotNil: [:locString | locString asUrl].
+	
 ]
 
 { #category : #accessing }

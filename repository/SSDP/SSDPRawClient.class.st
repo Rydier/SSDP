@@ -44,7 +44,7 @@ SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
 		"Nope, we really do have to announce it removed" 
 		byebyeHandler value: (cache remove: service) ]
 		
-		]newProcess name: 'SSDP<', cache serviceType,'> Cache pruning '
+		]newProcess name: 'SSDP<client:', cache serviceType,'> Cache pruning '
 ]
 
 { #category : #private }
@@ -88,17 +88,10 @@ SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 SSDPRawClient >> discoveryRequest: searchTarget receivingAnswersIn: receiveWindowSeconds [
 	"Nothing but headers, and a blank line"
 	
-	[String crlf join: #(
-   'M-SEARCH * HTTP/1.1'
-   'HOST:239.255.255.250:1900'
-   'MAN:ssdp:discover'
-   'MX:1'
-   'ST:ssdp:all'
-   '')].
-	"TODO: make host reliant on socket type"
+	"TODO: Rewrite to use multicastInfo for host" 
 	^('M-SEARCH * HTTP/1.1
 HOST: 239.255.255.250:1900
-MAN: ssdp:discover
+MAN: "ssdp:discover"
 MX:', receiveWindowSeconds asString, '
 ST:', searchTarget, '
 ') withInternetLineEndings
@@ -160,7 +153,7 @@ SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whe
 				ifUnavailable: whenByeBye ]] 
 				 ] repeat 
 	] newProcess
-		name: 'SSDP<', aSearchTarget, '> change listener';
+		name: 'SSDP<client:', aSearchTarget, '> change listener';
 		priority: Processor userBackgroundPriority;
 		yourself
 ]
