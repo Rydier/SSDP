@@ -20,6 +20,7 @@ Class {
 	#superclass : #SSDPParticipant,
 	#instVars : [
 		'service',
+		'delayGenerator',
 		'discoveryProcesses',
 		'keepAliveProcesses'
 	],
@@ -83,11 +84,17 @@ SSDPServer >> handleDiscoveryRequest: request receivedOn: aSocket [
 	destPort := aSocket remotePort.
 	"We should send our response at some random time before the discovery interval elapses"
 	[ 
-		(request timeout * SharedRandom globalGenerator next ) wait.
+		(request timeout * delayGenerator next ) wait.
 	aSocket
 		sendUDPData: service discoveryResponse
 		toHost: destAddress
 		port: destPort ] forkAt: Processor activeProcess priority + 1
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> initialize [
+	super 	initialize.
+	delayGenerator := Random new.
 ]
 
 { #category : #'initialize - release' }

@@ -56,10 +56,13 @@ SSDPCache >> matchesType: aNotification [
 { #category : #accessing }
 SSDPCache >> removeService: aService [
 	"Used to prune inactive processes from cache"
-	^accessMutex
-		critical:
-			[ entrySemaphore wait.
-			self remove: aService ifAbsent:[entrySemaphore signal. nil]]
+
+	^ accessMutex
+		critical: [ 
+			(self remove: aService ifAbsent: [ nil ])
+				ifNotNil: [ :removedService | 
+					entrySemaphore wait.
+					removedService ] ]
 ]
 
 { #category : #accessing }
@@ -71,8 +74,9 @@ SSDPCache >> removeServiceFor: aNotification [
 			[ currentLink := firstLink.
 			firstLink ifNil: [^nil ].
 			(aNotification relatedTo: currentLink value)
-				ifTrue: [ firstLink := currentLink nextLink.
-					firstLink ifNil: [ lastLink := nil ] ]
+				ifTrue: [ entrySemaphore wait.
+					firstLink := currentLink nextLink.
+					 ]
 				ifFalse:
 					[ | ourLink |
 					[ currentLink nextLink == nil

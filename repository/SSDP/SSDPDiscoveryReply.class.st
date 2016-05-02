@@ -43,8 +43,10 @@ SSDPDiscoveryReply >> initializeFrom: aDatagram [
 	serverInfo := response headers at: 'Server' ifAbsent: nil.
 	location := response headers at: 'Location' ifAbsent: nil.
 	"Cache control fields"
-		"TODO: Convert time field when present to DateAndTime"
-	discoveryTime := response headers at:'Date' ifAbsent: [ DateAndTime now].
+		"Mark:We always use time on local machine rather than value of Date header field.
+		This is more consistent with the cache update logic (which compares with local time,
+		and saves us having to deal with converting from a string representation of DateAndTime"
+	discoveryTime := DateAndTime now.
 	
 	cacheParams := $, split: ((response headers at: 'Cache-control' ifAbsent: [''])) .
 	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber asDuration.
