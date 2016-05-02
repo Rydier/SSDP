@@ -29,16 +29,25 @@ Class {
 { #category : #'private - available' }
 SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 	"Keep telling the client our service is available until we are not, and the thread is terminated."
-	^ [ [ [ aSendingSocket
+
+	^ [ [ [ [ aSendingSocket
 		sendUDPData: (service aliveResponseFor: aSendingSocket)
 		toHost: multicastInfo host
 		port: multicastInfo port.
 	(service maxAge // 3) wait ] repeat ]
+		on: PrimitiveFailed
+		do: [ self shutDown ]
+	"If we failed, it means my interface is no longer valid"
+	"Could rescan available interfaces, but for now, just restart server by triggering termination" ]
 		ensure:
-			[ aSendingSocket
+			[ [ aSendingSocket
 				sendUDPData: (service byebyeResponseFor: aSendingSocket)
 				toHost: multicastInfo host
-				port: multicastInfo port ] ] newProcess name: 'SSDP keepalive process'
+				port: multicastInfo port ]
+				on: PrimitiveFailed
+				do:
+					[ [ self offerService: service ] fork ]	"Termination triggered due to unavailability; fork of a restart" ] ]
+		newProcess name: 'SSDP keepalive process'
 ]
 
 { #category : #accessing }
@@ -83,7 +92,7 @@ SSDPServer >> handleDiscoveryRequest: request receivedOn: aSocket [
 
 { #category : #'initialize - release' }
 SSDPServer >> offerService: anSSDPService [
-	self stop.
+	self shutDown.
 	service := anSSDPService.
 	discoveryProcesses := listeningSockets
 		collect: [ :discoverySocket | 
@@ -111,7 +120,7 @@ SSDPServer >> serviceLocation [
 ]
 
 { #category : #'initialize - release' }
-SSDPServer >> stop [
+SSDPServer >> shutDown [
 	service ifNotNil: [ 
 		discoveryProcesses do: #terminate.
 		keepAliveProcesses do: #terminate.]

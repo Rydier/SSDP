@@ -67,8 +67,8 @@ SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 					(self
 						discoveryRequest: aServiceType
 						receivingAnswersIn: receiveWindow)
-				toHost: remoteAddress
-				port: remotePort.
+				toHost: multicastInfo host
+				port: multicastInfo port.
 			latestArrivalTime := (DateAndTime now 
 				+ receiveWindow asSeconds) .
 			
