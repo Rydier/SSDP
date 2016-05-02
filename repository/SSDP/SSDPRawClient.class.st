@@ -143,10 +143,12 @@ SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whe
 	[ | datagram  |
 	aSocket waitForData.
 	datagram := self readDatagramFrom: aSocket using: buffer.
-	(SSDPMessage from: datagram) ifNotNil: [ :notification |
-	notification ifNil: [ "self halt" ^nil ].
-	(notification serviceChangeIn: cache)
-		ifNotNil:
+	(SSDPMessage from: datagram) 
+		ifNil: [ "If missing messages, uncomment halt here to see if we parse it correctly"
+			"self halt" ]
+		ifNotNil: [ :notification |
+		(notification serviceChangeIn: cache)
+			ifNotNil:
 			[ :service | 
 			notification deliver: service 
 				ifAvailable: whenAvailable
