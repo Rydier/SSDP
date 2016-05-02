@@ -27,26 +27,26 @@ Class {
 		'receiveWindow',
 		'discoveryProcess',
 		'cache',
-		'listenerProcesses'
+		'listenerProcesses',
+		'cacheExpulsionProcess',
+		'cachePruningProcess'
 	],
 	#category : #'SSDP-Client'
 }
 
 { #category : #processes }
 SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
-	|cacheUpdateProcess|
-	cacheUpdateProcess := 
-		[|service|
+	^[|service|
 			[(service := cache first) validDuration.
 			service validDuration > 3 seconds] 
-				whileTrue: [(service validDuration - 1) wait].
+				whileTrue: [(service validDuration - 1 second) wait].
 		"See if we are able to re-discover the service"
 		self discover: service serviceType handleBy: [:aService |].
 		service validDuration < 3 seconds ifTrue: [
 		"Nope, we really do have to announce it removed" 
 		byebyeHandler value: (cache remove: service) ]
 		
-		]newProcess
+		]newProcess name: 'SSDP<', cache serviceType,'> Cache pruning '
 ]
 
 { #category : #private }
@@ -80,9 +80,7 @@ SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 			datagram :=  self
 				readDatagramFrom: discoverySocket
 				using: buffer.
-			(self
-				updateCache:
-					(SSDPDiscoveryReply fromDatagram: datagram))
+			((SSDPDiscoveryReply fromDatagram: datagram) serviceChangeIn: cache)
 				ifNotNil: [ :service | aHandler value: service ] ]
 				repeat.
 			discoverySocket setPeer: remoteAddress port: remotePort ]
@@ -95,14 +93,14 @@ SSDPRawClient >> discoveryRequest: searchTarget receivingAnswersIn: receiveWindo
 	[String crlf join: #(
    'M-SEARCH * HTTP/1.1'
    'HOST:239.255.255.250:1900'
-   'MAN:"ssdp:discover"'
+   'MAN:ssdp:discover'
    'MX:1'
    'ST:ssdp:all'
    '')].
 	"TODO: make host reliant on socket type"
 	^('M-SEARCH * HTTP/1.1
-HOST:239.255.255.250:1900
-MAN:"ssdp:discover"
+HOST: 239.255.255.250:1900
+MAN: ssdp:discover
 MX:', receiveWindowSeconds asString, '
 ST:', searchTarget, '
 ') withInternetLineEndings
@@ -110,6 +108,8 @@ ST:', searchTarget, '
 
 { #category : #'initialize - release' }
 SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
+	
+	cache := SSDPCache for: aSearchTarget.
 	listenerProcesses ifNotNil: [ listenerProcesses do: #terminate ].
 	self discover: aSearchTarget handleBy: aHandler.
 	listenerProcesses := listeningSockets
@@ -121,6 +121,8 @@ SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: 
 				available: aHandler
 				unavailable: anotherHandler ].
 	listenerProcesses do: #resume.
+	cachePruningProcess := self cacheExpulsionProcess: anotherHandler.
+	cachePruningProcess resume.
 
 ]
 
@@ -128,7 +130,9 @@ SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: 
 SSDPRawClient >> initialize [
 	"By default, receive all responses in less than a second. Increasing this will spread out processing of responses, as each service will delay for (0 to: receiveWindow) atRandom before responding"
 	super initialize.
+
 	receiveWindow := 1.
+	
 ]
 
 { #category : #processes }
@@ -136,18 +140,20 @@ SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whe
 	^ [ | buffer |
 
 	buffer := String new: 1024.
-	[ | datagram notification |
+	[ | datagram  |
 	aSocket waitForData.
 	datagram := self readDatagramFrom: aSocket using: buffer.
-	notification := SSDPMessage from: datagram .
+	(SSDPMessage from: datagram) ifNotNil: [ :notification |
+	notification ifNil: [ "self halt" ^nil ].
 	(notification serviceChangeIn: cache)
 		ifNotNil:
 			[ :service | 
 			notification deliver: service 
 				ifAvailable: whenAvailable
-				ifUnavailable: whenByeBye ] 
+				ifUnavailable: whenByeBye ]] 
 				 ] repeat 
 	] newProcess
+		name: 'SSDP<', aSearchTarget, '> change listener';
 		priority: Processor userBackgroundPriority;
 		yourself
 ]
@@ -155,18 +161,4 @@ SSDPRawClient >> newListenerProcessFor: aSearchTarget on: aSocket available: whe
 { #category : #accessing }
 SSDPRawClient >> receiveWindow: aNumberOfSeconds [
 	receiveWindow := aNumberOfSeconds
-]
-
-{ #category : #'private - caching' }
-SSDPRawClient >> updateCache: aService [
-	"Add if aService isAvailable and not yet in cache, remove if aService isUnavailable and in cache.
-	In all other cases, return nil"
-
-	"For testing, assume nothing is cached"
-
-	[ aService isAvailabilityNotification
-		ifTrue: [ ^ cache updatePositionOfService: aService ].
-	aService isUnavailabilityNotification
-		ifTrue: [ ^ cache removeService: aService ] ].
-	^ aService
 ]

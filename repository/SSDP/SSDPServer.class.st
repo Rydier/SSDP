@@ -11,23 +11,9 @@ Sample usage:
 |server|
 server := SSDPServer v4SiteLocal.
 server 
-	serviceNamed: 'ssdp:testService'
+	service: 'ssdp:testService'
 	availableAt: 'http:/test.local/'.
 server stop.
-
-or the more elaborate. but flexible:
-
-service := SSDPService 
-	named: 'ssdp:testService' 
-	at: http:/test.local/'.
-service serverInfo: 'My super server!'.
-
-server := SSDPServer v4SiteLocal.
-server offerService: service.
-
-server stop.
-
-
 "
 Class {
 	#name : #SSDPServer,
@@ -40,15 +26,6 @@ Class {
 	#category : #'SSDP-Server'
 }
 
-{ #category : #'instance creation' }
-SSDPServer class >> offerServiceType: aServiceType atLocation: aLocation [
-	^ self
-		offerService:
-			(SSDPService
-				ofType: 'ssdp:testService'
-				atLocation: 'http:/test.local/')
-]
-
 { #category : #'private - available' }
 SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 	"Keep telling the client our service is available until we are not, and the thread is terminated."
@@ -56,12 +33,12 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 		sendUDPData: (service aliveResponseFor: aSendingSocket)
 		toHost: aSendingSocket remoteAddress
 		port: aSendingSocket remotePort.
-	service maxAge // 3 seconds wait ] repeat ]
+	(service maxAge // 3) wait ] repeat ]
 		ensure:
 			[ aSendingSocket
 				sendUDPData: (service byebyeResponseFor: aSendingSocket)
 				toHost: aSendingSocket remoteAddress
-				port: aSendingSocket remotePort ] ] newProcess
+				port: aSendingSocket remotePort ] ] newProcess name: 'SSDP keepalive process'
 ]
 
 { #category : #accessing }
@@ -70,15 +47,14 @@ SSDPServer >> cacheTime [
 ]
 
 { #category : #'private - discovery' }
-SSDPServer >> discoveryListeningProcessFor: aService on: aSocket [
-	^[ |buffer dataAndSize|
-		buffer := ByteArray new: 1024.
-		aSocket waitForData.
-	 dataAndSize := self readDatagramFrom: aSocket using: buffer.
-	(self discoveryRequestFor: dataAndSize) 
-		ifNotNil: [:request |
-			self handleDiscoveryRequest: request receivedOn: aSocket] ] newProcess
-
+SSDPServer >> discoveryListeningProcessOn: aSocket [
+	^ [ | buffer datagram |
+	buffer := ByteArray new: 1024.
+	[ aSocket waitForData.
+	datagram := self readDatagramFrom: aSocket using: buffer.
+	(self discoveryRequestFrom: datagram)
+		ifNotNil: [ :request | self handleDiscoveryRequest: request receivedOn: aSocket ] ]
+		repeat ] newProcess name: 'SSDP discovery listener'
 ]
 
 { #category : #'private - discovery' }
@@ -86,7 +62,7 @@ SSDPServer >> discoveryRequestFrom: aDatagram [
 	^ (SSDPDiscoveryRequest
 		fromDatagram: aDatagram)
 		ifNotNil: [ :request | 
-			(request relatesTo: service)
+			(request relatedTo: service)
 				ifTrue: [ request ] ]
 ]
 
@@ -97,11 +73,12 @@ SSDPServer >> handleDiscoveryRequest: request receivedOn: aSocket [
 	destAddress := aSocket remoteAddress.
 	destPort := aSocket remotePort.
 	"We should send our response at some random time before the discovery interval elapses"
-	[ request timeout atRandom seconds wait.
+	"[ "	self halt. 
+		(request timeout * SharedRandom globalGenerator next ) wait.
 	aSocket
 		sendUDPData: service discoveryResponse
 		toHost: destAddress
-		port: destPort ] forkAt: Processor activeProcess priority + 1
+		port: destPort "] forkAt: Processor activeProcess priority + 1"
 ]
 
 { #category : #'initialize - release' }
@@ -110,7 +87,7 @@ SSDPServer >> offerService: anSSDPService [
 	service := anSSDPService.
 	discoveryProcesses := listeningSockets
 		collect: [ :discoverySocket | 
-			self discoveryListeningProcessFor: discoverySocket ].
+			self discoveryListeningProcessOn: discoverySocket ].
 	keepAliveProcesses := sendingSockets 
 		collect: [:keepAliveSocket | 
 			self aliveAnnouncingProcessOn: keepAliveSocket ].
@@ -124,8 +101,8 @@ SSDPServer >> offerServiceType: aServiceType atLocation: aLocation [
 	^ self
 		offerService:
 			(SSDPService
-				ofType: 'ssdp:testService'
-				atLocation: 'http:/test.local/')
+				ofType: aServiceType
+				atLocation: aLocation)
 ]
 
 { #category : #accessing }

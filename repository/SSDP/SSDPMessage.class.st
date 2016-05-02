@@ -42,3 +42,13 @@ SSDPMessage >> initializeFrom: aDatagram [
 SSDPMessage >> relatedTo: aService [
 	^aService uniqueServiceName = uniqueServiceName 
 ]
+
+{ #category : #accessing }
+SSDPMessage >> serviceType [
+	^serviceType
+]
+
+{ #category : #accessing }
+SSDPMessage >> uniqueServiceName [
+	^uniqueServiceName
+]

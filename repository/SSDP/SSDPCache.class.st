@@ -2,19 +2,36 @@
 SSDPCache holds Services in an order sorted by their expiry time.
 The two public methods are 
 updateServiceFor: and removeService: , used to keep cache current with availability/unavailability notifications respectively.
+
+We use a mutex to coordinate access between cache expulsion process and the change listener processes; this is a somewhat heavy handed approach, for instance since we only ever remove the first entry in list, the expulsion / update concurrency protection really only needs to guard an update of the first slot moving to 2nd.
+
 "
 Class {
 	#name : #SSDPCache,
 	#superclass : #LinkedList,
 	#instVars : [
-		'serviceType'
+		'serviceType',
+		'accessMutex',
+		'entrySemaphore'
 	],
 	#category : #'SSDP-Client'
 }
 
 { #category : #'as yet unclassified' }
 SSDPCache class >> for: aServiceType [
-	self new initializeType: aServiceType
+	^self new initializeType: aServiceType
+]
+
+{ #category : #accessing }
+SSDPCache >> first [
+	entrySemaphore wait.
+	^[super first] ensure: [entrySemaphore signal ]
+]
+
+{ #category : #'initialize - release' }
+SSDPCache >> initialize [
+	entrySemaphore := Semaphore new.
+	accessMutex := Mutex new.
 ]
 
 { #category : #'initialize - release' }
@@ -40,22 +57,45 @@ SSDPCache >> matchesType: aNotification [
 ]
 
 { #category : #accessing }
-SSDPCache >> removeService: aNotification [
-	|currentLink|
-	currentLink :=firstLink.
-	(aNotification relatedTo: currentLink value) 
-		ifTrue: [ firstLink := currentLink nextLink.
-				firstLink ifNil: [ lastLink := nil ]]
-		ifFalse: [|ourLink| 
-			[ currentLink nextLink == nil or: 
-				[aNotification relatedTo: currentLink nextLink value]] 
-		   		whileFalse: [currentLink := currentLink nextLink].
-			ourLink := currentLink nextLink.
-			ourLink ifNotNil: [ currentLink nextLink: ourLink nextLink.
-				ourLink == lastLink ifTrue: [ lastLink := currentLink] ].
-			currentLink := ourLink. ].	
+SSDPCache >> removeService: aService [
+	"Used to prune inactive processes from cache"
+	^accessMutex
+		critical:
+			[ entrySemaphore wait.
+			self remove: aService ifAbsent:[entrySemaphore signal. nil]]
+]
 
-	^currentLink == nil ifFalse: [ currentLink value ]
+{ #category : #accessing }
+SSDPCache >> removeServiceFor: aNotification [
+	"Used to remove services we are being told explicitly will no longer be available"
+	| currentLink |
+	accessMutex
+		critical:
+			[ currentLink := firstLink.
+			firstLink ifNil: [^nil ].
+			(aNotification relatedTo: currentLink value)
+				ifTrue: [ firstLink := currentLink nextLink.
+					firstLink ifNil: [ lastLink := nil ] ]
+				ifFalse:
+					[ | ourLink |
+					[ currentLink nextLink == nil
+						or: [ aNotification relatedTo: currentLink nextLink value ] ]
+						whileFalse: [ currentLink := currentLink nextLink ].
+					ourLink := currentLink nextLink.
+					ourLink
+						ifNotNil:
+							[ entrySemaphore wait.
+							currentLink nextLink: ourLink nextLink.
+							ourLink == lastLink
+								ifTrue: [ lastLink := currentLink ] ].
+					currentLink := ourLink ] ].
+	^ currentLink == nil
+		ifFalse: [ currentLink value ]
+]
+
+{ #category : #accessing }
+SSDPCache >> serviceType [
+	^serviceType
 ]
 
 { #category : #accessing }
@@ -67,22 +107,26 @@ SSDPCache >> updateServiceFor: aNotification [
 	currentLink := self
 		linkOfServiceRelatedTo: aNotification
 		ifAbsent: [ newService := aNotification asService.
-				self addFirst: (ValueLink value: newService) ].
-
+				[self addFirst: (ValueLink value: newService)] ensure: [ 
+				entrySemaphore signal]
+				 ].
+	accessMutex
+		critical:
+			[ 
 	currentLink value merge: aNotification.
-	self updateServicePosition: currentLink.
+	self updateServicePosition: currentLink].
 	^ newService
 ]
 
 { #category : #private }
 SSDPCache >> updateServicePosition: startLink [
-	| currentLink actualService |
+	| currentLink actualService nextLink|
 	currentLink := startLink.
 	actualService := currentLink value.
-	[ | nextLink |
+	[
 	nextLink := currentLink nextLink.
-	(nextLink notNil and: [ nextLink value cacheExpiry < actualService cacheExpiry ])
-		whileFalse: [ currentLink value: nextLink value.
+	(nextLink notNil and: [ nextLink value cacheExpiry < actualService cacheExpiry ])]
+		whileTrue: [ currentLink value: nextLink value.
 			nextLink value: actualService.
-			currentLink := nextLink ] ]
+			currentLink := nextLink ] 
 ]

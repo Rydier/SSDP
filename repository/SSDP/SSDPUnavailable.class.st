@@ -11,11 +11,11 @@ Class {
 SSDPUnavailable class >> represents: aDatagram [
 	"Available responses must always use the NOTIFY method"
 
-	^ aDatagram
-		beginsWith: 'NOTIFY * HTTP/1.1' asByteArray
+	^ (aDatagram
+		beginsWith: 'NOTIFY * HTTP/1.1')
 		and:
-			[ "Hacky, potentially wrong if there's two fields of value ssdp:alive, but let's not do full header parsing twice..."
-			(aDatagram indexOfSubCollection: 'ssdp:byebye' asByteArray) > 0 ]	
+			[|ntsIndex| "Hacky, potentially wrong if there's two fields of value ssdp:alive, but let's not do full header parsing twice..."
+			(ntsIndex := aDatagram indexOfSubCollection: 'ssdp:byebye') > 0 and: ["We reuse buffers, make sure we're not matching remnants of old datagram by checking against endofheaders sequence" ntsIndex < (aDatagram indexOfSubCollection: String crlf, String crlf) ]]	
 ]
 
 { #category : #handling }
@@ -29,7 +29,7 @@ SSDPUnavailable >> initializeFrom: aDatagram [
 	stream := aDatagram readStream.
 	stream nextLine trim = 'NOTIFY * HTTP/1.1' ifFalse: [ ^nil ].
 	headers := ZnHeaders readFrom: stream.
-	(headers at: 'Nts' = 'ssdp:byebye') ifFalse: [ ^nil ].
+	(headers at: 'Nts') = 'ssdp:byebye' ifFalse: [ ^nil ].
 	"Obligatory SSDP notify fields"
 	serviceType :=  headers at: 'Nt'.
 	uniqueServiceName :=  headers at: 'Usn'.
@@ -37,5 +37,5 @@ SSDPUnavailable >> initializeFrom: aDatagram [
 
 { #category : #handling }
 SSDPUnavailable >> serviceChangeIn: aCache [
-	^aCache removeService: self
+	^aCache removeServiceFor: self
 ]

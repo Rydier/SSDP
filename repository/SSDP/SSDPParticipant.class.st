@@ -11,7 +11,8 @@ Class {
 	#superclass : #Object,
 	#instVars : [
 		'listeningSockets',
-		'sendingSockets'
+		'sendingSockets',
+		'multicastInfo'
 	],
 	#category : #'SSDP-Core'
 }
@@ -42,9 +43,49 @@ SSDPParticipant class >> v6SiteLocal [
 ]
 
 { #category : #'initialize - release' }
+SSDPParticipant >> initializeSocketsOn: localInterfaces [
+	listeningSockets := OrderedCollection new.
+	sendingSockets := OrderedCollection new.
+	localInterfaces
+		do:
+			[ :localInterfaceAddress | 
+			| listeningSocket sendingSocket validMulticast |
+			listeningSocket := Socket newUDP.
+			listeningSocket setOption: 'SO_REUSEADDR' value: true.
+			Smalltalk os isMacOSX
+				ifTrue: [ listeningSocket bindTo: multicastInfo host port: multicastInfo port ].	"To receive traffic sent to multicast address, OSX must be bound to the multicast address"
+			Smalltalk os isWin32
+				ifTrue: [ listeningSocket bindTo: localInterfaceAddress port: 0 ].	"Windows however, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface"
+			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
+			We need to tell the OS we are interested in packets that arrive at our local interface."
+			listeningSocket
+				setOption: 'IP_ADD_MEMBERSHIP'
+				value: multicastInfo host , localInterfaceAddress.
+			sendingSocket := Socket newUDP.
+			"We want to send data from the specific local interface"
+			sendingSocket bindTo: localInterfaceAddress port: 0.
+			"If we can't send data through this interface, exclude it from those we communicate with.
+			(For instance, it fails for virtual interfaces for Parallels VM's on OSX)"
+			validMulticast := [ sendingSocket
+				sendUDPData: #[0]
+				toHost: multicastInfo host
+				port: multicastInfo port.
+			true ]
+				on: PrimitiveFailed
+				do: [ false ].
+			"Funnily enough, probing with an empty package causes listening sockets to end up in ConnectedButClosedByOtherSide, so send a packat with length=1"
+			validMulticast
+				ifTrue: [ listeningSockets add: listeningSocket.
+					sendingSockets add: sendingSocket ] ]
+]
+
+{ #category : #'initialize - release' }
 SSDPParticipant >> initializev4SiteLocal [
 	"Set up a socket to listen/send search requests on the IPv4 site local multicast address 239.255.255.250"
 
+	multicastInfo := ProtocolClient new host: #[239 255 255 250]; port: 1900; yourself.
+	
+	self initializeSocketsOn: self localV4Addresses.
 	listeningSockets := OrderedCollection new.
 	sendingSockets := OrderedCollection new.
 	self localV4Addresses
@@ -53,16 +94,19 @@ SSDPParticipant >> initializev4SiteLocal [
 			| listeningSocket sendingSocket |
 			listeningSocket := Socket newUDP.
 			listeningSocket setOption: 'SO_REUSEADDR' value: true.
-			listeningSocket bindTo: IPv4InterfaceAddress port: 0.
-			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
+			Smalltalk os isMacOSX ifTrue: [ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
+			listeningSocket bindTo: multicastInfo host port: multicastInfo port].
+			Smalltalk os isWin32 ifTrue: [ "Windows however, does not allow binding to multicast addresses, but will receive multicast traffic when bound to local interface"
+			listeningSocket bindTo: IPv4InterfaceAddress port: 0.	 ].
+						"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
 			We need to tell the OS we are interested in packets that arrive at our local interface."
 			listeningSocket
 				setOption: 'IP_ADD_MEMBERSHIP'
-				value: #[239 255 255 250] , IPv4InterfaceAddress.
+				value: multicastInfo host, IPv4InterfaceAddress.
 			listeningSockets add: listeningSocket.
 			sendingSocket := Socket newUDP.
 			"We want to send data to the SSDP broadcast address"
-			sendingSocket setPeer: #[239 255 255 250] port: self ipv4Port.
+			sendingSocket setPeer: multicastInfo host port: multicastInfo port.
 			sendingSockets add: sendingSocket ]
 ]
 
@@ -168,7 +212,7 @@ SSDPParticipant >> readDatagramFrom: aSocket using: buffer [
 	| fullDatagram status read |
 	"Receiving data will change remoteAddress to the actual sender.
 	Senders who care about aSockets values of these are responsible for preserving/restoring them."
-	
+
 	fullDatagram := buffer.
 	status := aSocket receiveUDPDataInto: buffer.
 	read := status at: 1.

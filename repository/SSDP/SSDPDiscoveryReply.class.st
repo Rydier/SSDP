@@ -16,7 +16,7 @@ Class {
 { #category : #testing }
 SSDPDiscoveryReply class >> represents: aDatagram [
 	"Discovery responses must always have status 200 OK"
-	^aDatagram beginsWith: 'HTTP/1.1 200 OK' asByteArray
+	^aDatagram beginsWith: 'HTTP/1.1 200 OK'
 	
 ]
 
@@ -47,7 +47,7 @@ SSDPDiscoveryReply >> initializeFrom: aDatagram [
 	discoveryTime := response headers at:'Date' ifAbsent: [ DateAndTime now].
 	
 	cacheParams := $, split: ((response headers at: 'Cache-control' ifAbsent: [''])) .
-	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber.
+	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber asDuration.
 	
 
 
@@ -70,12 +70,8 @@ SSDPDiscoveryReply >> serverInfo [
 	^serverInfo
 ]
 
-{ #category : #accessing }
-SSDPDiscoveryReply >> serviceType [
-	^serviceType
-]
-
-{ #category : #accessing }
-SSDPDiscoveryReply >> uniqueServiceName [
-	^uniqueServiceName
+{ #category : #handling }
+SSDPDiscoveryReply >> serviceChangeIn: aCache [
+self halt.
+	^aCache updateServiceFor: self
 ]
