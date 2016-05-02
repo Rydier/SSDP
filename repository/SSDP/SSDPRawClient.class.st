@@ -25,10 +25,8 @@ Class {
 	#superclass : #SSDPParticipant,
 	#instVars : [
 		'receiveWindow',
-		'discoveryProcess',
 		'cache',
 		'listenerProcesses',
-		'cacheExpulsionProcess',
 		'cachePruningProcess'
 	],
 	#category : #'SSDP-Client'
