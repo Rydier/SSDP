@@ -86,28 +86,7 @@ SSDPParticipant >> initializev4SiteLocal [
 	multicastInfo := ProtocolClient new host: #[239 255 255 250]; port: 1900; yourself.
 	
 	self initializeSocketsOn: self localV4Addresses.
-	listeningSockets := OrderedCollection new.
-	sendingSockets := OrderedCollection new.
-	self localV4Addresses
-		do:
-			[ :IPv4InterfaceAddress | 
-			| listeningSocket sendingSocket |
-			listeningSocket := Socket newUDP.
-			listeningSocket setOption: 'SO_REUSEADDR' value: true.
-			Smalltalk os isMacOSX ifTrue: [ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
-			listeningSocket bindTo: multicastInfo host port: multicastInfo port].
-			Smalltalk os isWin32 ifTrue: [ "Windows however, does not allow binding to multicast addresses, but will receive multicast traffic when bound to local interface"
-			listeningSocket bindTo: IPv4InterfaceAddress port: 0.	 ].
-						"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
-			We need to tell the OS we are interested in packets that arrive at our local interface."
-			listeningSocket
-				setOption: 'IP_ADD_MEMBERSHIP'
-				value: multicastInfo host, IPv4InterfaceAddress.
-			listeningSockets add: listeningSocket.
-			sendingSocket := Socket newUDP.
-			"We want to send data to the SSDP broadcast address"
-			sendingSocket setPeer: multicastInfo host port: multicastInfo port.
-			sendingSockets add: sendingSocket ]
+	
 ]
 
 { #category : #'initialize - release' }
@@ -196,7 +175,8 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	NetNameResolver primGetAddressInfoResult: addr.
 	rawAddress := addr copyFrom: (ipOffsets at: aFamily) first to: (ipOffsets at: aFamily) last.
 	NetNameResolver primGetAddressInfoNext.
-	result add: rawAddress ] repeat
+	"Observed duplicate entries when disabling/enabling networks on OSX; remove any such just in case"
+	(result includes: rawAddress) ifFalse: [result add: rawAddress] ] repeat
 ]
 
 { #category : #'private - interface enumeration' }

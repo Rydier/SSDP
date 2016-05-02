@@ -31,14 +31,14 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 	"Keep telling the client our service is available until we are not, and the thread is terminated."
 	^ [ [ [ aSendingSocket
 		sendUDPData: (service aliveResponseFor: aSendingSocket)
-		toHost: aSendingSocket remoteAddress
-		port: aSendingSocket remotePort.
+		toHost: multicastInfo host
+		port: multicastInfo port.
 	(service maxAge // 3) wait ] repeat ]
 		ensure:
 			[ aSendingSocket
 				sendUDPData: (service byebyeResponseFor: aSendingSocket)
-				toHost: aSendingSocket remoteAddress
-				port: aSendingSocket remotePort ] ] newProcess name: 'SSDP keepalive process'
+				toHost: multicastInfo host
+				port: multicastInfo port ] ] newProcess name: 'SSDP keepalive process'
 ]
 
 { #category : #accessing }
