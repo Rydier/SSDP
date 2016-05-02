@@ -2,9 +2,6 @@
 SSDPCache holds Services in an order sorted by their expiry time.
 The two public methods are 
 updateServiceFor: and removeService: , used to keep cache current with availability/unavailability notifications respectively.
-
-We use a mutex to coordinate access between cache expulsion process and the change listener processes; this is a somewhat heavy handed approach, for instance since we only ever remove the first entry in list, the expulsion / update concurrency protection really only needs to guard an update of the first slot moving to 2nd.
-
 "
 Class {
 	#name : #SSDPCache,
