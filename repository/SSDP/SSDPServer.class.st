@@ -82,12 +82,12 @@ SSDPServer >> handleDiscoveryRequest: request receivedOn: aSocket [
 	destAddress := aSocket remoteAddress.
 	destPort := aSocket remotePort.
 	"We should send our response at some random time before the discovery interval elapses"
-	"[ "	self halt. 
+	[ 
 		(request timeout * SharedRandom globalGenerator next ) wait.
 	aSocket
 		sendUDPData: service discoveryResponse
 		toHost: destAddress
-		port: destPort "] forkAt: Processor activeProcess priority + 1"
+		port: destPort ] forkAt: Processor activeProcess priority + 1
 ]
 
 { #category : #'initialize - release' }
