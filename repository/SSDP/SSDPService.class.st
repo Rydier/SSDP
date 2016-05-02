@@ -88,17 +88,29 @@ SSDPService >> hash [
 
 { #category : #'initialize - release' }
 SSDPService >> initializeWithType: aServiceType at: aServiceLocation [
-	
-	|locationHash|
+	| locationHash locationHex |
 	serviceType := aServiceType.
-	location := aServiceLocation asUrl.
-	"For current purposes, identify services uniquely by the hash of their location.
+	location := aServiceLocation asUrl.	"For current purposes, identify services uniquely by the hash of their location.
 	Saves us a lot of trouble wrt. maintaining identity of services after restarts etc.
 	(But of course means, if our services location changes, it is registed as a wholly new service)"
-	locationHash := (SHA256 new hashStream: aServiceLocation readStream) first: 16.
-	uniqueServiceName := 'uuid:', locationHash hex asLowercase, ':', aServiceLocation.
-	maxAge := 180 seconds. 
-	
+	locationHash := SHA256 new hashStream: aServiceLocation readStream.
+	locationHex := locationHash hex readStream.
+	uniqueServiceName := String
+		streamContents: [ :stream | 
+			stream
+				nextPutAll: 'uuid:';
+				nextPutAll: (locationHex next: 8);
+				nextPut: $-;
+				nextPutAll: (locationHex next: 4);
+				nextPut: $-;
+				nextPutAll: (locationHex next: 4);
+				nextPut: $-;
+				nextPutAll: (locationHex next: 4);
+				nextPut: $-;
+				nextPutAll: (locationHex next: 12);
+				nextPutAll: '::';
+				nextPutAll: aServiceLocation ].
+	maxAge := 180 seconds
 ]
 
 { #category : #accessing }
