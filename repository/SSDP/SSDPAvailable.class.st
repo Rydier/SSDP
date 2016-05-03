@@ -52,9 +52,9 @@ SSDPAvailable >> initializeFrom: aDatagram [
 	"Cache control fields"
 	"TODO: Convert to DateAndTime if actually present"
 	discoveryTime :=  headers at:'Date' ifAbsent: [ DateAndTime now].
-	cacheParams := $, split: (( headers at: 'Cache-control' ifAbsent: [''])) .
+	cacheParams := ( headers at: 'Cache-control' ifAbsent: ['']) splitOn: ',' .
 	"Could also be communicated through Expiry field, only support maxAge for now"
-	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last trim asNumber asSeconds.
+	maxAge := (  (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0') splitOn: '=') last trim asNumber seconds.
 	"Common SSDP notify fields"
 	
 	serverInfo :=  headers at: 'Server' ifAbsent: nil.

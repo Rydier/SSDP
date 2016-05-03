@@ -158,9 +158,9 @@ SSDPService >> remoteAddressString: aSocket [
 	addr := aSocket remoteAddress.
 	^addr size = 4 
 		ifTrue: [ "IPv4"
-			'.' join:  (addr collect: #asString as: OrderedCollection)   ] 
+			  (addr collect: #asString as: OrderedCollection) joinUsing: '.'  ] 
 		ifFalse: [ "IPv6"
-			':' join:  ((addr collect: [:e | e printStringBase: 16]) as: OrderedCollection) ]
+			 ((addr collect: [:e | e printStringBase: 16]) as: OrderedCollection) joinUsing: ':' ]
 ]
 
 { #category : #accessing }
