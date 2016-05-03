@@ -156,7 +156,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
 	host := NetNameResolver localHostName.
 	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	host := (host copyUpToLast: $.) , '.local'.
+	host := (host upTo: $.) , '.local'.
 	NetNameResolver initializeNetwork.
 	NetNameResolver
 		primGetAddressInfoHost: host
