@@ -11,5 +11,10 @@ ZnResponse class >> readFrom: aStream [
 
 { #category : #'as yet unclassified' }
 ZnResponse >> headers [
-	^headers
+	"Zn returns Dictionary of normalized keys -> values, not collection of assocs"
+	|return|
+	return := Dictionary new: headers size.
+	headers do: [:each | 
+		return at: each key asLowercase capitalized put: each value].
+	^return
 ]

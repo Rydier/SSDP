@@ -12,5 +12,12 @@ ZnHeaders class >> initialize [
 
 { #category : #'instance creation' }
 ZnHeaders class >> readFrom: aStream [
-	^WebUtils readHeadersFrom: aStream
+"Zn returns Dictionary of normalized keys -> values, not collection of assocs"
+	| sqHeaders return|
+	sqHeaders := WebUtils readHeadersFrom: aStream.
+	return := Dictionary new: sqHeaders size.
+	sqHeaders do: [:each | 
+		return at: each key asLowercase capitalized put: each value].
+	^return
+
 ]
