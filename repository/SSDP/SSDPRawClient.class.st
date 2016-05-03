@@ -54,7 +54,7 @@ SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 	"Send an explicit message indicating that services implementing aType should notify me they are available"
 
 	| buffer |
-	buffer := ByteArray new: 1024.
+	buffer := ByteString new: 1024.
 	sendingSockets
 		do:
 			[ : discoverySocket | |remoteAddress remotePort latestArrivalTime| 
@@ -70,7 +70,7 @@ SSDPRawClient >> discover: aServiceType handleBy: aHandler [
 				toHost: multicastInfo host
 				port: multicastInfo port.
 			latestArrivalTime := (DateAndTime now 
-				+ receiveWindow asSeconds) .
+				+ receiveWindow) .
 			
 			[ | datagram |
 			discoverySocket
@@ -124,7 +124,7 @@ SSDPRawClient >> initialize [
 	"By default, receive all responses in less than a second. Increasing this will spread out processing of responses, as each service will delay for (0 to: receiveWindow) atRandom before responding"
 	super initialize.
 
-	receiveWindow := 1.
+	receiveWindow := 1 second.
 	
 ]
 

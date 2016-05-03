@@ -32,24 +32,25 @@ SSDPDiscoveryReply >> discoveryTime [
 
 { #category : #'initialize - release' }
 SSDPDiscoveryReply >> initializeFrom: aDatagram [ 
-	| response cacheParams |
+	| response headers cacheParams |
 	response := ZnResponse readFrom: aDatagram readStream.
 	"If the response was not 200 OK, we are required to disregard it"
-	response status = 200 ifFalse: [ ^nil ].
+	response code = 200 ifFalse: [ ^nil ].
+	headers := response headers.
 	"Obligatory SSDP fields"
-	serviceType := response headers at: 'St'.
-	uniqueServiceName := response headers at: 'Usn'.
+	serviceType :=  headers at: 'St'.
+	uniqueServiceName :=  headers at: 'Usn'.
 	"Common SSDP fields"
-	serverInfo := response headers at: 'Server' ifAbsent: nil.
-	location := response headers at: 'Location' ifAbsent: nil.
+	serverInfo :=  headers at: 'Server' ifAbsent: nil.
+	location :=  headers at: 'Location' ifAbsent: nil.
 	"Cache control fields"
 		"Mark:We always use time on local machine rather than value of Date header field.
 		This is more consistent with the cache update logic (which compares with local time,
 		and saves us having to deal with converting from a string representation of DateAndTime"
 	discoveryTime := DateAndTime now.
 	
-	cacheParams := $, split: ((response headers at: 'Cache-control' ifAbsent: [''])) .
-	maxAge := ( $= split: (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0')) last asNumber asDuration.
+	cacheParams :=  ( headers at: 'Cache-control' ifAbsent: ['']) splitOn: ',' .
+	maxAge := ( (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0') splitOn: '=') last asNumber asDuration.
 	
 
 

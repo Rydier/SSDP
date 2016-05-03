@@ -52,10 +52,11 @@ SSDPParticipant >> initializeSocketsOn: localInterfaces [
 			| listeningSocket sendingSocket validMulticast |
 			listeningSocket := Socket newUDP.
 			listeningSocket setOption: 'SO_REUSEADDR' value: true.
-			Smalltalk os isMacOSX
-				ifTrue: [ listeningSocket bindTo: multicastInfo host port: multicastInfo port ].	"To receive traffic sent to multicast address, OSX must be bound to the multicast address"
-			Smalltalk os isWin32
-				ifTrue: [ listeningSocket bindTo: localInterfaceAddress port: 0 ].	"Windows however, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface"
+			Smalltalk os platformName = 'Win32'
+				ifTrue: [ listeningSocket bindTo: localInterfaceAddress port: 0 ]	"Windows however, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface"
+				ifFalse:[ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
+					"Do the same on *nix, not sure if needed, but save the extra branch unless necessary"
+					listeningSocket bindTo: multicastInfo host port: multicastInfo port ]. 
 			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
 			We need to tell the OS we are interested in packets that arrive at our local interface."
 			listeningSocket
@@ -156,7 +157,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
 	host := NetNameResolver localHostName.
 	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	host := (host upTo: $.) , '.local'.
+	host := (host copyUpTo: $.) , '.local'.
 	NetNameResolver initializeNetwork.
 	NetNameResolver
 		primGetAddressInfoHost: host
