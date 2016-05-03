@@ -34,17 +34,19 @@ Class {
 
 { #category : #processes }
 SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
-	^[|service|
+	^[|service cachedService |
 			[(service := cache first) validDuration.
 			service validDuration > 3 seconds] 
 				whileTrue: [(service validDuration - 1 second) wait].
 		"See if we are able to re-discover the service"
 		self discover: service serviceType handleBy: [:aService |].
-		service validDuration < 3 seconds ifTrue: [
+		service validDuration < 3 seconds ifTrue:  [
+			"if not found in cache, ignore "
+		cachedService := cache remove: service ifAbsent: [ nil ].
 		"Nope, we really do have to announce it removed" 
-		byebyeHandler value: (cache remove: service) ]
+		cachedService ifNotNil: [byebyeHandler value: cachedService]  ]
 		
-		]newProcess name: 'SSDP<client:', cache serviceType,'> Cache pruning '
+		]newProcess name: 'SSDP<', cache serviceType,'> Cache pruning '
 ]
 
 { #category : #private }
