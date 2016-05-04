@@ -12,12 +12,16 @@ As a Service's USN will always identify it uniquely,  we hold a cache of the cur
 Thus, a user must initialize me with the service type it is interested in and two callbacks.
 Sample usage:
 |client|
-client := SSDClient v4SiteLocal.
+client := SSDPClient v4SiteLocal.
 client filter: 'ssdp:all' 
-	whenAvailable: [ :resource | resource printOn: Transcript.
-		'is available' logCr. ]
-	whenUnavailable: [ :resource | resource printOn: Transcript.
-		'is becoming unavailable' logCr. ].
+	whenAvailable: [ :resource | 
+		resource printOn: Transcript.
+		'is available' printOn: Transcript.
+		Transcript nextPut: Character cr. ]
+	whenUnavailable: [ :resource | 
+		resource printOn: Transcript.
+		'is becoming unavailable' printOn: Transcript.
+		Transcript nextPut: Character cr.  ].
 	
 "
 Class {
