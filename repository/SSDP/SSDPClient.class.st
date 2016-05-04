@@ -1,5 +1,5 @@
 "
-An SSDPRawClient listens to changes in available resources that provide services, using the SSDP protocol.
+An SSDPClient listens to changes in available resources that provide services, using the SSDP protocol.
 
 An SSDP client can be used to send a single type of message; used to discover available resources when first starting up, or getting an up to date list of the available resources, if resources it cares about, has exceeded the max cache period, without receiving a notification that service is still avaiable.
 There are three SSDP events that need handling; 
@@ -12,7 +12,7 @@ As a Service's USN will always identify it uniquely,  we hold a cache of the cur
 Thus, a user must initialize me with the service type it is interested in and two callbacks.
 Sample usage:
 |client|
-client := SSDPRawClient v4SiteLocal.
+client := SSDClient v4SiteLocal.
 client filter: 'ssdp:all' 
 	whenAvailable: [ :resource | resource printOn: Transcript.
 		'is available' logCr. ]
@@ -21,7 +21,7 @@ client filter: 'ssdp:all'
 	
 "
 Class {
-	#name : #SSDPRawClient,
+	#name : #SSDPClient,
 	#superclass : #SSDPParticipant,
 	#instVars : [
 		'availableHandler',
@@ -36,7 +36,7 @@ Class {
 }
 
 { #category : #processes }
-SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
+SSDPClient >> cacheExpulsionProcess: byebyeHandler [
 	^[|service cachedService |
 			[(service := cache first) validDuration.
 			service validDuration > 3 seconds] 
@@ -53,7 +53,7 @@ SSDPRawClient >> cacheExpulsionProcess: byebyeHandler [
 ]
 
 { #category : #'private - discovery' }
-SSDPRawClient >> discover: aServiceType available: aHandler [
+SSDPClient >> discover: aServiceType available: aHandler [
 	"Send an explicit message indicating that services implementing aType should notify me they are available"
 		"This is the only process of the client that sends data over the multicast address"
 
@@ -87,7 +87,7 @@ SSDPRawClient >> discover: aServiceType available: aHandler [
 ]
 
 { #category : #processes }
-SSDPRawClient >> discoveryProcessFor: aServiceType available: aHandler [
+SSDPClient >> discoveryProcessFor: aServiceType available: aHandler [
 	"Use a separate process running discovery; don't wait for receiveWindow to expire before starting listening to Availability updates.
 	Will terminate some time after receiveWindow expires"
 
@@ -96,7 +96,7 @@ SSDPRawClient >> discoveryProcessFor: aServiceType available: aHandler [
 ]
 
 { #category : #'private - requests' }
-SSDPRawClient >> discoveryRequest: searchTarget receivingAnswersIn: receiveWindowSeconds [
+SSDPClient >> discoveryRequest: searchTarget receivingAnswersIn: receiveWindowSeconds [
 	"Nothing but headers, and a blank line"
 	
 	"TODO: Rewrite to use multicastInfo for host" 
@@ -109,7 +109,7 @@ ST:', searchTarget, '
 ]
 
 { #category : #starting }
-SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
+SSDPClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
 	| discoveryProcess |
 	self shutDown.
 	serviceType := aSearchTarget.
@@ -119,7 +119,7 @@ SSDPRawClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: 
 ]
 
 { #category : #'initialize - release' }
-SSDPRawClient >> initialize [
+SSDPClient >> initialize [
 	"By default, receive all responses in less than a second. Increasing this will spread out processing of responses, as each service will delay for (0 to: receiveWindow) atRandom before responding"
 	super initialize.
 
@@ -128,13 +128,13 @@ SSDPRawClient >> initialize [
 ]
 
 { #category : #debugging }
-SSDPRawClient >> inspectMissing: aDatagram [
+SSDPClient >> inspectMissing: aDatagram [
 	"If missing messages, uncomment halt here to see if we parse it correctly"
 	"self halt"
 ]
 
 { #category : #processes }
-SSDPRawClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAvailable unavailable: whenByeBye [
+SSDPClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAvailable unavailable: whenByeBye [
 	^ [ | buffer |
 
 	buffer := String new: 1024.
@@ -160,19 +160,19 @@ SSDPRawClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAv
 ]
 
 { #category : #accessing }
-SSDPRawClient >> receiveWindow: aNumberOfSeconds [
+SSDPClient >> receiveWindow: aNumberOfSeconds [
 	receiveWindow := aNumberOfSeconds
 ]
 
 { #category : #'initialize - release' }
-SSDPRawClient >> shutDown [
+SSDPClient >> shutDown [
 	listenerProcesses
 		ifNotNil: [ listenerProcesses do: #terminate.
 			cachePruningProcess terminate ]
 ]
 
 { #category : #'initialize - release' }
-SSDPRawClient >> startUp [
+SSDPClient >> startUp [
 	|discoveryProcess|
 	super startUp.
 	
