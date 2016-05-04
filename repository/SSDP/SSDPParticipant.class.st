@@ -65,6 +65,10 @@ SSDPParticipant >> initializeSocketsOn: localInterfaces [
 			sendingSocket := Socket newUDP.
 			"We want to send data from the specific local interface"
 			sendingSocket bindTo: localInterfaceAddress port: 0.
+			"Sending sockets also need to be added to the multicast group, otherwise network interface will only deliver packets we send locally"
+			sendingSocket
+				setOption: 'IP_ADD_MEMBERSHIP'
+				value: multicastInfo host , localInterfaceAddress.
 			"If we can't send data through this interface, exclude it from those we communicate with.
 			(For instance, it fails for virtual interfaces for Parallels VM's on OSX)"
 			validMulticast := [ sendingSocket
@@ -157,7 +161,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
 	host := NetNameResolver localHostName.
 	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	"host := (host copyUpTo: $.) , '.local'."
+	host := (host copyUpTo: $.) , '.local'.
 	NetNameResolver initializeNetwork.
 	NetNameResolver
 		primGetAddressInfoHost: host
