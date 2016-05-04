@@ -157,7 +157,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
 	host := NetNameResolver localHostName.
 	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	host := (host copyUpTo: $.) , '.local'.
+	"host := (host copyUpTo: $.) , '.local'."
 	NetNameResolver initializeNetwork.
 	NetNameResolver
 		primGetAddressInfoHost: host
@@ -186,6 +186,16 @@ SSDPParticipant >> localV4Addresses [
 	amongst them the ones needed to find local interfaces.
 	Inline their use here, so it works for both Pharo and Squeak"
 	^self localAddresses: 2 port: self ipv4Port.
+]
+
+{ #category : #accessing }
+SSDPParticipant >> multicastInfoHost [
+	^multicastInfo host
+]
+
+{ #category : #accessing }
+SSDPParticipant >> multicastInfoPort [
+	^multicastInfo port
 ]
 
 { #category : #private }

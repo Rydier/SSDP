@@ -31,16 +31,17 @@ SSDPService >> = anotherObject [
 ]
 
 { #category : #'server messages' }
-SSDPService >> aliveResponseFor: aSocket [
+SSDPService >> aliveResponseFor: aHostInfo [
 	"The ping we send periodically to notify clients we are still here"
 	"TODO: Rewrite to take multicastInfo as parameter "
+	
 	^('NOTIFY * HTTP/1.1
-Host: ', (self remoteAddressString: aSocket) , ':' , aSocket remotePort asString, '
+Host: ', (self remoteAddressString: aHostInfo) , ':' , aHostInfo port asString, '
 NT: ', serviceType ,'
 NTS: ssdp:alive
 USN: ', uniqueServiceName ,'
 Location: ', location asString , '
-Cache-Control: max-age = ', maxAge asSeconds printString,'
+Cache-Control: max-age=', maxAge asSeconds printString,'
 
 ') withInternetLineEndings
 ]
@@ -153,9 +154,9 @@ SSDPService >> printOn: aStream [
 ]
 
 { #category : #'private -printing' }
-SSDPService >> remoteAddressString: aSocket [
+SSDPService >> remoteAddressString: aHostInfo [
 	|addr|
-	addr := aSocket remoteAddress.
+	addr := aHostInfo host.
 	^addr size = 4 
 		ifTrue: [ "IPv4"
 			  (addr collect: #asString as: OrderedCollection) joinUsing: '.'  ] 
