@@ -22,7 +22,8 @@ Class {
 		'service',
 		'delayGenerator',
 		'discoveryProcesses',
-		'keepAliveProcesses'
+		'keepAliveProcesses',
+		'replySockets'
 	],
 	#category : #'SSDP-Server'
 }
@@ -42,24 +43,35 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 	"Could rescan available interfaces, but for now, just restart server by triggering termination" ]
 		ensure:
 			[ [ aSendingSocket
-				sendUDPData: (service byebyeResponseFor: aSendingSocket)
+				sendUDPData: (service byebyeResponseFor: multicastInfo)
 				toHost: multicastInfo host
 				port: multicastInfo port ]
 				on: PrimitiveFailed
 				do:
-					[ [ self offerService: service ] fork ]	"Termination triggered due to unavailability; fork of a restart" ] ]
+					[ [ self offerService: service ] fork ]	"Termination triggered due to unavailability; fork of a restart which will scan currently available interfaces" ] ]
 		newProcess name: 'SSDP<server:', service serviceType,'> keepalive process'
 ]
 
 { #category : #'private - discovery' }
-SSDPServer >> discoveryListeningProcessOn: aSocket [
-	^ [ | buffer datagram |
+SSDPServer >> discoveryListeningProcessOn: aListeningSocket [
+	^ [ | buffer senderAndDatagram |
 	buffer := ByteArray new: 1024.
-	[ aSocket waitForData.
-	datagram := self readDatagramFrom: aSocket using: buffer.
-	(self discoveryRequestFrom: datagram)
-		ifNotNil: [ :request | self handleDiscoveryRequest: request receivedOn: aSocket ] ]
-		repeat ] newProcess name: 'SSDP<server:', service serviceType,'> discovery listener'
+	[ aListeningSocket waitForData.
+	senderAndDatagram := self
+		readSenderAndDatagramFrom: aListeningSocket
+		using: buffer.
+	(self discoveryRequestFrom: senderAndDatagram value)
+		ifNotNil:
+			[ :request | 
+			| replySocket |
+			"Reply using the socket bound to same interface as we are listening on"
+			replySocket := replySockets
+				at: (listeningSockets indexOf: aListeningSocket).
+			self
+				replyToDiscoveryRequest: request
+				from: senderAndDatagram key
+				on: replySocket ] ] repeat ] newProcess
+		name: 'SSDP<server:' , service serviceType , '> discovery listener'
 ]
 
 { #category : #'private - discovery' }
@@ -93,10 +105,65 @@ SSDPServer >> initialize [
 ]
 
 { #category : #'initialize - release' }
+SSDPServer >> initializeSocketsForInterface: localInterface [
+	"Setup sockets that can listen and send data to the multicast address on the subnet of localInterface"
+
+	^ (super initializeSocketsForInterface: localInterface)
+		and:
+			[ | replySocket |
+			replySocket := Socket newUDP.
+			replySocket bindTo: localInterface port: 0.
+			replySockets add: replySocket.
+			 true ]
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> initializeSocketsOn: localInterfaces [
+	"A server needs sockets not bound to the multicast address when replying to discovery requests"
+	replySockets := OrderedCollection new.
+	super initializeSocketsOn: localInterfaces
+]
+
+{ #category : #starting }
 SSDPServer >> offerService: anSSDPService [
 	self shutDown.
 	service := anSSDPService.
 	service serverInfo: self versionInfo.
+	self startUp.
+]
+
+{ #category : #starting }
+SSDPServer >> offerServiceType: aServiceType atLocation: aLocation [
+	^ self
+		offerService:
+			(SSDPService
+				ofType: aServiceType
+				atLocation: aLocation)
+]
+
+{ #category : #'private - discovery' }
+SSDPServer >> replyToDiscoveryRequest: request from: aSender on: aReplySocket [
+
+	"We should send our response at some random time before the discovery interval elapses"
+	[ 
+		(request timeout * delayGenerator next ) wait.
+	aReplySocket
+		sendUDPData: service discoveryResponse
+		toHost: aSender host
+		port: aSender port ] forkAt: Processor activeProcess priority + 1
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> shutDown [
+	service ifNotNil: [ 
+		discoveryProcesses do: #terminate.
+		keepAliveProcesses do: #terminate.]
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> startUp [
+
+	super startUp.
 	discoveryProcesses := listeningSockets
 		collect: [ :discoverySocket | 
 			self discoveryListeningProcessOn: discoverySocket ].
@@ -106,22 +173,6 @@ SSDPServer >> offerService: anSSDPService [
 	discoveryProcesses do: #resume.
 	keepAliveProcesses do: #resume.
 	
-]
-
-{ #category : #'initialize - release' }
-SSDPServer >> offerServiceType: aServiceType atLocation: aLocation [
-	^ self
-		offerService:
-			(SSDPService
-				ofType: aServiceType
-				atLocation: aLocation)
-]
-
-{ #category : #'initialize - release' }
-SSDPServer >> shutDown [
-	service ifNotNil: [ 
-		discoveryProcesses do: #terminate.
-		keepAliveProcesses do: #terminate.]
 ]
 
 { #category : #accessing }

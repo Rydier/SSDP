@@ -47,11 +47,11 @@ Cache-Control: max-age=', maxAge asSeconds printString,'
 ]
 
 { #category : #'server messages' }
-SSDPService >> byebyeResponseFor: aSocket [
+SSDPService >> byebyeResponseFor: multicastInfo [
 	"The ping we send when shutting down to notify clients we can no longer provide services"
 		"TODO: Rewrite to take multicastInfo as parameter "
 	^('NOTIFY * HTTP/1.1
-Host: ', (self remoteAddressString: aSocket), ':' , aSocket remotePort asString, ' 
+Host: ', (self remoteAddressString: multicastInfo), ':' , multicastInfo port asString, ' 
 NT: ', serviceType ,'
 NTS: ssdp:byebye
 USN: ', uniqueServiceName, '
@@ -71,7 +71,7 @@ ST: ', serviceType ,'
 USN: ',  uniqueServiceName,'
 Location: ', location asString, '
 Server: ', self serverInfo, '
-Cache-Control: max-age = ', maxAge asSeconds printString,'
+Cache-Control: max-age=', maxAge asSeconds printString,'
 
 ') withInternetLineEndings
 	

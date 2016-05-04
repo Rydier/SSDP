@@ -5,6 +5,14 @@ It implements setup of SSDP sockets, one for each local interface, which will:
 - Receive packets sent to the multicast socket
 - Send data to the multicast address
 
+Sending and receiving to the same interface must happen on logically separate sockets, as on some platforms, the interface the socket must be bound to in order to listen to multicast traffic, will mean primitive failures if we try sending over the same socket.
+
+Both listening and sending sockets must have been added to the multicast group;
+- listening sockets to receive anything at all 
+- sending sockets to not have their traffic discarded by routers and only reach local addresses.
+
+Any attempt to send data to addresses other than the multicast addresses on sockets that have been bound to the multicast group  WILL FAIL, so if a reply should be sent directly to some address, the participant must create the sockets over which these are sent separately.
+
 "
 Class {
 	#name : #SSDPParticipant,
@@ -43,45 +51,58 @@ SSDPParticipant class >> v6SiteLocal [
 ]
 
 { #category : #'initialize - release' }
-SSDPParticipant >> initializeSocketsOn: localInterfaces [
-	listeningSockets := OrderedCollection new.
-	sendingSockets := OrderedCollection new.
-	localInterfaces
-		do:
-			[ :localInterfaceAddress | 
-			| listeningSocket sendingSocket validMulticast |
+SSDPParticipant >> initializeSocketsForInterface: localInterface [
+	"Setup sockets that can listen and send data to the multicast address on the subnet of localInterface"
+| listeningSocket sendingSocket validMulticast |
 			listeningSocket := Socket newUDP.
 			listeningSocket setOption: 'SO_REUSEADDR' value: true.
 			Smalltalk os platformName = 'Win32'
-				ifTrue: [ listeningSocket bindTo: localInterfaceAddress port: 0 ]	"Windows however, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface"
-				ifFalse:[ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
-					"Do the same on *nix, not sure if needed, but save the extra branch unless necessary"
-					listeningSocket bindTo: multicastInfo host port: multicastInfo port ]. 
-			"We want this socket to be used to listen to datagrams sent to the SSDP multicast address and port; 
-			We need to tell the OS we are interested in packets that arrive at our local interface."
+			ifFalse:[ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
+					"Do the same on *nix, not sure if needed, but save the extra branch unless found necessary"
+					listeningSocket bindTo: multicastInfo host port: multicastInfo port ] 
+				ifTrue: [ "Windows on the other hand, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface"
+					listeningSocket bindTo: localInterface port: 0 ].	
+				
+			"Add to multicast group so the OS doesn't block the traffic we're interested in"
 			listeningSocket
 				setOption: 'IP_ADD_MEMBERSHIP'
-				value: multicastInfo host , localInterfaceAddress.
+				value: multicastInfo host , localInterface.
+				
+		"Theoretically, on Windows, there's no technical reason why we could not use the same socket to send, but since in the actual subclasses we use processes waiting on data from sending/listening sockets, with different handlers, it's more convenient to just create separate sockets here for Windows as well."		
 			sendingSocket := Socket newUDP.
 			"We want to send data from the specific local interface"
-			sendingSocket bindTo: localInterfaceAddress port: 0.
+			sendingSocket bindTo: localInterface port: 0.
 			"Sending sockets also need to be added to the multicast group, otherwise network interface will only deliver packets we send locally"
 			sendingSocket
 				setOption: 'IP_ADD_MEMBERSHIP'
-				value: multicastInfo host , localInterfaceAddress.
+				value: multicastInfo host , localInterface.
 			"If we can't send data through this interface, exclude it from those we communicate with.
-			(For instance, it fails for virtual interfaces for Parallels VM's on OSX)"
-			validMulticast := [ sendingSocket
+			(For instance, it fails for virtual interfaces created by non-running Parallels VM's on OSX)"
+			validMulticast := [ 
+				"Probing with an empty package causes listening sockets to end up in ConnectedButClosedByOtherSide, so send a packet with length=1"
+				sendingSocket
 				sendUDPData: #[0]
 				toHost: multicastInfo host
 				port: multicastInfo port.
 			true ]
 				on: PrimitiveFailed
 				do: [ false ].
-			"Funnily enough, probing with an empty package causes listening sockets to end up in ConnectedButClosedByOtherSide, so send a packat with length=1"
+			
 			validMulticast
 				ifTrue: [ listeningSockets add: listeningSocket.
-					sendingSockets add: sendingSocket ] ]
+					sendingSockets add: sendingSocket ].
+		^validMulticast
+
+]
+
+{ #category : #'initialize - release' }
+SSDPParticipant >> initializeSocketsOn: localInterfaces [
+	listeningSockets := OrderedCollection new.
+	sendingSockets := OrderedCollection new.
+	localInterfaces
+		do:
+			[ :localInterfaceAddress | 
+			self initializeSocketsForInterface: localInterfaceAddress ]
 ]
 
 { #category : #'initialize - release' }
@@ -89,8 +110,6 @@ SSDPParticipant >> initializev4SiteLocal [
 	"Set up a socket to listen/send search requests on the IPv4 site local multicast address 239.255.255.250"
 
 	multicastInfo := ProtocolClient new host: #[239 255 255 250]; port: 1900; yourself.
-	
-	self initializeSocketsOn: self localV4Addresses.
 	
 ]
 
@@ -185,16 +204,18 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 ]
 
 { #category : #'private - interface enumeration' }
+SSDPParticipant >> localAddressesFor: aMulticastAddress [
+	^ aMulticastAddress size = 4
+		ifTrue: [ self localV4Addresses ]
+		ifFalse: [ self localV6Addresses ]
+]
+
+{ #category : #'private - interface enumeration' }
 SSDPParticipant >> localV4Addresses [
 	"Pharo has removed all support classes and calls to the ipv6-aware primitives, 
 	amongst them the ones needed to find local interfaces.
 	Inline their use here, so it works for both Pharo and Squeak"
 	^self localAddresses: 2 port: self ipv4Port.
-]
-
-{ #category : #accessing }
-SSDPParticipant >> multicastInfoHost [
-	^multicastInfo host
 ]
 
 { #category : #accessing }
@@ -222,5 +243,34 @@ SSDPParticipant >> readDatagramFrom: aSocket using: buffer [
 	"We can safely return the fullDatagram without the amount read, since all SSDP messages use http header format, which
 	are always terminated with an empty line. So there's no chance for a compliant header parser to mistakenly read past that point"
 	^fullDatagram.
+	
+]
+
+{ #category : #private }
+SSDPParticipant >> readSenderAndDatagramFrom: aSocket using: buffer [
+	| fullDatagram status read |
+	"Use this method to read datagrams for which the sender expects a reply; normally receiveUDPDataInto: sets remoteAddress/port to this info; but not for multicast sockets. Nor is it very thread-safe to fork of replies... "
+
+	fullDatagram := buffer.
+	status := aSocket receiveUDPDataInto: buffer.
+	read := status at: 1.
+	(status at: 4)
+		ifTrue: [ fullDatagram := buffer copyFrom: 1 to: read ].
+	[ status at: 4 ]
+		whileTrue:
+			[ status := aSocket receiveUDPDataInto: buffer.
+			read := read + (status at: 1).
+			fullDatagram := fullDatagram
+				, (buffer copyFrom: 1 to: (status at: 1)) ].
+	"We can safely return the fullDatagram without the amount read, since all SSDP messages use http header format, which
+	are always terminated with an empty line. So there's no chance for a compliant header parser to mistakenly read past that point"
+	^(ProtocolClient new host: status second; port: status third; yourself) -> fullDatagram.
+	
+]
+
+{ #category : #'initialize - release' }
+SSDPParticipant >> startUp [
+	"Let socket finalization handle release of resources; but ensure sockets are valid when we start up"
+	self initializeSocketsOn: (self localAddressesFor: multicastInfo host).
 	
 ]
