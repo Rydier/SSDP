@@ -5,14 +5,6 @@ It implements setup of SSDP sockets, one for each local interface, which will:
 - Receive packets sent to the multicast socket
 - Send data to the multicast address
 
-Sending and receiving to the same interface must happen on logically separate sockets, as on some platforms, the interface the socket must be bound to in order to listen to multicast traffic, will mean primitive failures if we try sending over the same socket.
-
-Both listening and sending sockets must have been added to the multicast group;
-- listening sockets to receive anything at all 
-- sending sockets to not have their traffic discarded by routers and only reach local addresses.
-
-Any attempt to send data to addresses other than the multicast addresses on sockets that have been bound to the multicast group  WILL FAIL, so if a reply should be sent directly to some address, the participant must create the sockets over which these are sent separately.
-
 "
 Class {
 	#name : #SSDPParticipant,
@@ -178,10 +170,11 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	type := protocol.
 	"Obviously, we can't just pass in '' to mean all local addresses, that either resolves to the 'let OS decide' or loopback address depending on flags... So we need to jump some hoops to get the actual network interfaces based on localHostName."
 	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
+	NetNameResolver initializeNetwork.
 	host := NetNameResolver localHostName.
 	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
 	host := (host copyUpTo: $.) , '.local'.
-	NetNameResolver initializeNetwork.
+
 	NetNameResolver
 		primGetAddressInfoHost: host
 		service: aPort asString

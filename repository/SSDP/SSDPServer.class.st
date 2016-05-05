@@ -11,9 +11,9 @@ Sample usage:
 |server|
 server := SSDPServer v4SiteLocal.
 server 
-	offerServiceType: 'ssdp:testservice'
-	atLocation: 'http://localhost/test'.
-server shutDown.
+	service: 'ssdp:testService'
+	availableAt: 'http:/test.local/'.
+server stop.
 "
 Class {
 	#name : #SSDPServer,
