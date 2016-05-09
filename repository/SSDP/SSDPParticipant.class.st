@@ -173,7 +173,9 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	NetNameResolver initializeNetwork.
 	host := NetNameResolver localHostName.
 	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	host := (host copyUpTo: $.) , '.local'.
+	"if host is just an ip address do nothing"
+	(host copyUpTo: $.) isAllDigits ifFalse: 
+								[host := (host copyUpTo: $.) , '.local'].
 
 	NetNameResolver
 		primGetAddressInfoHost: host
