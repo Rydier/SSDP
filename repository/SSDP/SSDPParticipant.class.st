@@ -174,10 +174,13 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	NetNameResolver initializeNetwork.
 	host := NetNameResolver localHostName.
 	"Strip out any subdomains, to get the most available interfaces, local if none in name so we do a dns lookup, instead of returning loopback ip"
+	"if host is just an ip address do nothing"
+	(host copyUpTo: $.) isAllDigits
+		ifFalse: [
 	domainIx := host lastIndexOf: $..
 	domainIx > 0 
 		ifTrue: [host := (host copyUpTo: $.) ,  (host copyFrom: domainIx to: host size)] 
-		ifFalse: [host := host, '.local'].
+		ifFalse: [host := host, '.local']].
 	
 	NetNameResolver
 		primGetAddressInfoHost: host
