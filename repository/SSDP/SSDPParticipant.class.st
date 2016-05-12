@@ -151,13 +151,14 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	amongst them the ones needed to find local interfaces.
 	Inline their use here, so it works for both Pharo and Squeak
 	Remember to set UseOldNetwork to false when running on Squeak, or localHostname is likely to return
-	a helpful result such as '127.0.0.1' instead of the actual hostname"
+	a helpful result such as '127.0.0.1' instead of the actual hostname.
+	Assume distinct hostnames on the network, otherwise, we may return the ip address of another machine with the same name..."
 
 	"aFamily:
 	1 = ipv6
 	2 = ipv4"
 
-	| ipOffsets protocol type host result |
+	| ipOffsets protocol type host result domainIx |
 	"ipv4 address found from 13-16 in address object, ipv6 from 15-32 "
 	ipOffsets := #(#[ 15 32 ] #[ 13 16 ]).
 	"Protocol:
@@ -172,16 +173,17 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
 	NetNameResolver initializeNetwork.
 	host := NetNameResolver localHostName.
-	"If we do not search the .local domain, only first interface that can resolve hostname will be returned, not all"
-	"if host is just an ip address do nothing"
-	(host copyUpTo: $.) isAllDigits ifFalse: 
-								[host := (host copyUpTo: $.) , '.local'].
-
+	"Strip out any subdomains, to get the most available interfaces, local if none in name so we do a dns lookup, instead of returning loopback ip"
+	domainIx := host lastIndexOf: $..
+	domainIx > 0 
+		ifTrue: [host := (host copyUpTo: $.) ,  (host copyFrom: domainIx to: host size)] 
+		ifFalse: [host := host, '.local'].
+	
 	NetNameResolver
 		primGetAddressInfoHost: host
 		service: aPort asString
 		flags: 0
-		family: 2
+		family: aFamily
 		type: type
 		protocol: protocol.	"Obviously, the port number must be passed to primitive as string, lest the primitive crash"	"IPv4"
 	result := OrderedCollection new.

@@ -153,6 +153,11 @@ SSDPServer >> replyToDiscoveryRequest: request from: aSender on: aReplySocket [
 		port: aSender port ] forkAt: Processor activeProcess priority + 1
 ]
 
+{ #category : #accessing }
+SSDPServer >> service [
+	^service
+]
+
 { #category : #'initialize - release' }
 SSDPServer >> shutDown [
 	service ifNotNil: [ 
