@@ -12,7 +12,8 @@ Class {
 	#instVars : [
 		'listeningSockets',
 		'sendingSockets',
-		'multicastInfo'
+		'multicastInfo',
+		'runningOn'
 	],
 	#category : #'SSDP-Core'
 }
@@ -271,6 +272,7 @@ SSDPParticipant >> readSenderAndDatagramFrom: aSocket using: buffer [
 { #category : #'initialize - release' }
 SSDPParticipant >> startUp [
 	"Let socket finalization handle release of resources; but ensure sockets are valid when we start up"
-	self initializeSocketsOn: (self localAddressesFor: multicastInfo host).
+	runningOn := (self localAddressesFor: multicastInfo host).
+	self initializeSocketsOn: runningOn
 	
 ]
