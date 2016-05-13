@@ -110,6 +110,8 @@ SSDPService >> initializeWithType: aServiceType at: aServiceLocation [
 				nextPut: $-;
 				nextPutAll: (locationHex next: 12);
 				nextPutAll: '::';
+				nextPutAll: NetNameResolver localHostName;
+				nextPutAll: '::';
 				nextPutAll: aServiceType ].
 	maxAge := 180 seconds
 ]
