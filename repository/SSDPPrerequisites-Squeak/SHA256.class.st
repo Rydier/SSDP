@@ -13,8 +13,8 @@ SHA256 >> hashStream: aStream [
 	str1 := (aStream next: elements) readStream.
 	str2 := (aStream upToEnd) readStream.
 	output := ByteArray new: 40.
-	output replaceFrom: 1 to: 20 with: (super hashStream: str1 ) startingAt: 1.
-	output replaceFrom: 21 to: 40 with: (super hashStream: str2 ) startingAt: 1.
+	output replaceFrom: 21 to: 40 with: (super hashStream: str1 ) startingAt: 1.
+	output replaceFrom: 1 to: 20 with: (super hashStream: str2 ) startingAt: 1.
 	^output.
 	
 ]
