@@ -77,17 +77,50 @@ SSDPClient >> discover: aServiceType available: aHandler [
 			latestArrivalTime := (DateAndTime now 
 				+ (receiveWindow * 2)).
 			
-			[ | datagram |
+			[ |  timedOut|
+			timedOut := false.
 			discoverySocket
 				waitForDataForMsecs: (latestArrivalTime - DateAndTime now) asMilliSeconds
 				ifClosed: nil "Never gonna happen, UDP baby"
-				ifTimedOut: [ ^ nil ].	
+				ifTimedOut: [timedOut := true ].
+				timedOut] whileFalse: [ 	|datagram|
+			datagram :=  self
+				readDatagramFrom: discoverySocket
+				using: buffer.
+			((SSDPDiscoveryReply fromDatagram: datagram) serviceChangeIn: cache)
+				ifNotNil: [ :service | aHandler value: service ] ] ]
+]
+
+{ #category : #'private - discovery' }
+SSDPClient >> discover: aServiceType on: discoverySocket available: aHandler [
+	"Send an explicit message indicating that services implementing aType should notify me they are available"
+		"This is the only process of the client that sends data over the multicast address"
+
+	| buffer latestArrivalTime|
+	buffer := ByteString new: 1024.
+	discoverySocket
+		sendUDPData:
+			(self
+				discoveryRequest: aServiceType
+				receivingAnswersIn: receiveWindow)
+		toHost: multicastInfo host
+		port: multicastInfo port.
+			
+	latestArrivalTime := (DateAndTime now 
+		+ (receiveWindow * 2)).
+			
+	[ |  timedOut|
+		timedOut := false.
+		discoverySocket
+			waitForDataForMsecs: (latestArrivalTime - DateAndTime now) asMilliSeconds
+			ifClosed: nil "Never gonna happen, UDP baby"
+			ifTimedOut: [timedOut := true ].
+		timedOut] whileFalse: [ 	|datagram|
 			datagram :=  self
 				readDatagramFrom: discoverySocket
 				using: buffer.
 			((SSDPDiscoveryReply fromDatagram: datagram) serviceChangeIn: cache)
 				ifNotNil: [ :service | aHandler value: service ] ]
-				repeat. ]
 ]
 
 { #category : #processes }
@@ -97,6 +130,15 @@ SSDPClient >> discoveryProcessFor: aServiceType available: aHandler [
 
 	^ [ self discover: aServiceType available: aHandler ] newProcess
 		name: 'SSDP<client:' , aServiceType , '> discovery process'
+]
+
+{ #category : #processes }
+SSDPClient >> discoveryProcessFor: aServiceType on: aSocket available: aHandler [
+	"Use a separate process running discovery; don't wait for receiveWindow to expire before starting listening to Availability updates.
+	Will terminate some time after receiveWindow expires"
+
+	^ [ self discover: aServiceType on: aSocket available: aHandler ] newProcess
+		name: 'SSDP<client:' , aServiceType , '> discovery process on ', aSocket localAddress
 ]
 
 { #category : #'private - requests' }
@@ -144,7 +186,7 @@ SSDPClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAvail
 	buffer := String new: 1024.
 	[ | datagram  |
 	aSocket waitForData.
-	
+
 	datagram := self readDatagramFrom: aSocket using: buffer.
 	(SSDPMessage from: datagram) 
 		ifNil: [ 
@@ -177,13 +219,15 @@ SSDPClient >> shutDown [
 
 { #category : #'initialize - release' }
 SSDPClient >> startUp [
-	|discoveryProcess|
+	|discoveryProcesses|
 	super startUp.
 	
 	cache := SSDPCache for: serviceType.
-	discoveryProcess := self
-		discoveryProcessFor: serviceType
-		available: availableHandler.
+	discoveryProcesses := sendingSockets collect: [:discoverySocket | 
+			self
+			discoveryProcessFor: serviceType
+			on: discoverySocket
+			available: availableHandler].
 	listenerProcesses := listeningSockets
 		collect:
 			[ :aSocket | 
@@ -193,7 +237,7 @@ SSDPClient >> startUp [
 				available: availableHandler
 				unavailable: unavailableHandler  ].
 	cachePruningProcess := self cacheExpulsionProcess: unavailableHandler.
-	discoveryProcess resume.
+	discoveryProcesses do: #resume.
 	listenerProcesses do: #resume.
 	cachePruningProcess resume
 ]

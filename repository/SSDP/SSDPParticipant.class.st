@@ -49,26 +49,29 @@ SSDPParticipant >> initializeSocketsForInterface: localInterface [
 | listeningSocket sendingSocket validMulticast |
 			listeningSocket := Socket newUDP.
 			listeningSocket setOption: 'SO_REUSEADDR' value: true.
-			Smalltalk os platformName = 'Win32'
-			ifFalse:[ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
-					"Do the same on *nix, not sure if needed, but save the extra branch unless found necessary"
-					listeningSocket bindTo: multicastInfo host port: multicastInfo port ] 
-				ifTrue: [ "Windows on the other hand, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface"
-					listeningSocket bindTo: localInterface port: 0 ].	
-				
 			"Add to multicast group so the OS doesn't block the traffic we're interested in"
 			listeningSocket
 				setOption: 'IP_ADD_MEMBERSHIP'
 				value: multicastInfo host , localInterface.
+			Smalltalk os platformName = 'Win32'
+			ifFalse:[ "To receive traffic sent to multicast address, OSX must be bound to the multicast address"
+					"Do the same on *nix, not sure if needed, but save the extra branch unless found necessary"
+					listeningSocket bindTo: multicastInfo host port: multicastInfo port ] 
+				ifTrue: [ "Windows on the other hand, does not allow binding to multicast addresses, but will receive multicast traffic when bound to a local interface. Though, it also must be bound to the correct port"
+					listeningSocket bindTo: localInterface port: multicastInfo port ].	
+
+			
 				
 		"Theoretically, on Windows, there's no technical reason why we could not use the same socket to send, but since in the actual subclasses we use processes waiting on data from sending/listening sockets, with different handlers, it's more convenient to just create separate sockets here for Windows as well."		
 			sendingSocket := Socket newUDP.
-			"We want to send data from the specific local interface"
-			sendingSocket bindTo: localInterface port: 0.
-			"Sending sockets also need to be added to the multicast group, otherwise network interface will only deliver packets we send locally"
+				"Sending sockets also need to be added to the multicast group, otherwise network interface will only deliver packets we send locally. On Windows, this option MUST be set before binding to an address"
 			sendingSocket
 				setOption: 'IP_ADD_MEMBERSHIP'
 				value: multicastInfo host , localInterface.
+			"We want to send data from the specific local interface"
+			sendingSocket bindTo: localInterface port: 0.
+			
+		
 			"If we can't send data through this interface, exclude it from those we communicate with.
 			(For instance, it fails for virtual interfaces created by non-running Parallels VM's on OSX)"
 			validMulticast := [ 
