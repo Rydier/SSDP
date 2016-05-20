@@ -64,7 +64,7 @@ SSDPParticipant >> initializeSocketsForInterface: localInterface [
 				
 		"Theoretically, on Windows, there's no technical reason why we could not use the same socket to send, but since in the actual subclasses we use processes waiting on data from sending/listening sockets, with different handlers, it's more convenient to just create separate sockets here for Windows as well."		
 			sendingSocket := Socket newUDP.
-				"Sending sockets also need to be added to the multicast group, otherwise network interface will only deliver packets we send locally. On Windows, this option MUST be set before binding to an address"
+				"Sending sockets also need to be added to the multicast group, otherwise network interface will only deliver packets we send locally."
 			sendingSocket
 				setOption: 'IP_ADD_MEMBERSHIP'
 				value: multicastInfo host , localInterface.

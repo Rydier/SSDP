@@ -43,8 +43,7 @@ Class {
 SSDPClient >> cacheExpulsionProcess: byebyeHandler [
 	^ [ 
 	| service  |
-	[ 
-	[ 
+	[[ 
 	(service := cache first) validDuration.
 	service validDuration > 3 seconds ] whileTrue: [ (service validDuration - 1 second) wait ].	"See if we are able to re-discover the service"
 	self discover: service serviceType available: [ :aService |  ].
@@ -149,7 +148,7 @@ SSDPClient >> discoveryRequest: searchTarget receivingAnswersIn: receiveWindowSe
 	^('M-SEARCH * HTTP/1.1
 HOST: 239.255.255.250:1900
 MAN: "ssdp:discover"
-MX:', receiveWindowSeconds asString, '
+MX:', receiveWindowSeconds asSeconds asString, '
 ST:', searchTarget, '
 ') withInternetLineEndings
 ]
@@ -169,7 +168,7 @@ SSDPClient >> initialize [
 	"By default, receive all responses in less than a second. Increasing this will spread out processing of responses, as each service will delay for (0 to: receiveWindow) atRandom before responding"
 	super initialize.
 
-	receiveWindow := 1 second.
+	receiveWindow := 3 seconds.
 	
 ]
 
@@ -206,8 +205,8 @@ SSDPClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAvail
 ]
 
 { #category : #accessing }
-SSDPClient >> receiveWindow: aNumberOfSeconds [
-	receiveWindow := aNumberOfSeconds
+SSDPClient >> receiveWindow: aDuration [
+	receiveWindow := aDuration
 ]
 
 { #category : #'initialize - release' }
