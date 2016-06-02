@@ -150,6 +150,7 @@ HOST: 239.255.255.250:1900
 MAN: "ssdp:discover"
 MX:', receiveWindowSeconds asSeconds asString, '
 ST:', searchTarget, '
+
 ') withInternetLineEndings
 ]
 
