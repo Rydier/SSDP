@@ -13,7 +13,13 @@ server := SSDPServer v4SiteLocal.
 server 
 	offerServiceType: 'ssdp:testService'
 	atLocation: 'http:/test.local/'.
-server stop.
+server shutDown.
+
+Care must be taken when disposing existing entities of SSDPServer in order to play nice with the garbage collector,  since an SSDPServer creates everlasting processes that reference it.
+If no different handlers are required, an the intent is to refresh the sockets instance listens on, a  user should call shutDown;startUp on an existing instance rather than replacing it.
+If a replacement with different handlers is required, the user MUST call shutDown on the old server before replacement happens.
+A user is also responsible for ensuring shutDown/startUp methods are called at image startup/shutdown, so processes are terminated correctly, and no lingering sockets will exist.
+	
 "
 Class {
 	#name : #SSDPServer,

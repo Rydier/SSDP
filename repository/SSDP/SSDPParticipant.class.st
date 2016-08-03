@@ -5,6 +5,14 @@ It implements setup of SSDP sockets, one for each local interface, which will:
 - Receive packets sent to the multicast socket
 - Send data to the multicast address
 
+Sending and receiving to the same interface must happen on logically separate sockets, as on some platforms, the interface the socket must be bound to in order to listen to multicast traffic, will mean primitive failures if we try sending over the same socket.
+
+Both listening and sending sockets must have been added to the multicast group;
+- listening sockets to receive anything at all 
+- sending sockets to not have their traffic discarded by routers and only reach local addresses.
+
+Any attempt to send data to addresses other than the multicast addresses on sockets that have been bound to the multicast group  WILL FAIL, so if a reply should be sent directly to some address, the participant must create the sockets over which these are sent separately.
+
 "
 Class {
 	#name : #SSDPParticipant,
