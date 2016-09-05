@@ -50,7 +50,8 @@ SSDPDiscoveryReply >> initializeFrom: aDatagram [
 	discoveryTime := DateAndTime now.
 	
 	cacheParams :=  ( headers at: 'Cache-control' ifAbsent: ['']) splitOn: ',' .
-	maxAge := ( (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0') splitOn: '=') last trim asNumber asDuration.
+	"Squeak Number >> #asDuration gives nanoseconds, not seconds, so set duration as seconds explicitly"
+	maxAge := Duration seconds: ( (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0') splitOn: '=') last trim asNumber.
 	
 
 

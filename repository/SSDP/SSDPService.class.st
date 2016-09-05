@@ -61,7 +61,7 @@ USN: ', uniqueServiceName, '
 
 { #category : #'accessing - cache validity' }
 SSDPService >> cacheExpiry [ 
-	^self discoveryTime + self maxAge asDuration
+	^self discoveryTime + self maxAge
 ]
 
 { #category : #'server messages' }

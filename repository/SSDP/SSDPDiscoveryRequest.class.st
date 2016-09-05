@@ -24,8 +24,9 @@ SSDPDiscoveryRequest >> initializeFrom: aDatagram [
 	headers := ZnHeaders readFrom: stream.
 	(headers at: 'Man') = '"ssdp:discover"' ifFalse: [ ^nil ].
 	serviceType :=  headers at: 'St'.
-	"Send within 1 second by default"
-	timeout := (headers at:'Mx' ifAbsent: [1]) asNumber asDuration.
+	"Reply required within timeout, default within 1 second. 
+	Squeak Number >> #asDuration gives nanoseconds, not seconds, so set duration as seconds explicitly"
+	timeout := Duration seconds: (headers at:'Mx' ifAbsent: [1]).
 	
 ]
 
