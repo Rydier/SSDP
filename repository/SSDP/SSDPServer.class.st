@@ -5,6 +5,10 @@ It implements the server-part of SSDP, specifically:
 - Sending ssdp:alive messages to refresh cache-expiry in clients.
 - Sending ssdp:byebye messages to explicitly tell clients the service is no longer available
 
+These messages are sent three times at first use.
+While it may seem strange to send three in a row without any kind of delay, it helps on wireless 
+networks, where packet loss is much more transient than one would otherwise expect.
+
 At the moment, for simplicity, there's a 1-1 mapping between server and services; if more should be available, use multiple servers.
 
 Sample usage:
@@ -37,21 +41,29 @@ Class {
 { #category : #'private - available' }
 SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 	"Keep telling the client our service is available until we are not, and the thread is terminated."
+	"First time through, send packet three times, so there's less chance of missing it due to single dropped packet"
 
-	^ [ [ [ [ aSendingSocket
+	^ [ [ [|announceAlive| 
+			announceAlive := 
+				[ aSendingSocket
 		sendUDPData: (service aliveResponseFor: multicastInfo)
 		toHost: multicastInfo host
 		port: multicastInfo port.
-	(service maxAge // 3) wait ] repeat ]
+	"Give clients three opportunities to catch the announcement in the period before we are evicted from caches"
+	].
+	2 timesRepeat: announceAlive.
+	[announceAlive value. (service maxAge // 4) wait  ] repeat ]
 		on: PrimitiveFailed
 		do: [ self shutDown ]
 	"If we failed, it means my interface is no longer valid"
 	"Could rescan available interfaces, but for now, just restart server by triggering termination" ]
 		ensure:
-			[ [ aSendingSocket
+			[ [ "All good things are three.
+				Prefer some duplicated traffic over having to wait for cache timeout when a single packet fails delivery.)"
+				3 timesRepeat: [aSendingSocket
 				sendUDPData: (service byebyeResponseFor: multicastInfo)
 				toHost: multicastInfo host
-				port: multicastInfo port ]
+				port: multicastInfo port ]]
 				on: PrimitiveFailed
 				do:
 					[ [ self offerService: service ] fork ]	"Termination triggered due to unavailability; fork of a restart which will scan currently available interfaces" ] ]
@@ -95,13 +107,15 @@ SSDPServer >> handleDiscoveryRequest: request receivedOn: aSocket [
 	"We fork off delivery, so we need to remember where we can send reply to client"
 	destAddress := aSocket remoteAddress.
 	destPort := aSocket remotePort.
-	"We should send our response at some random time before the discovery interval elapses"
-	[ 
+	
+	[ "We send our response at some random time before the discovery interval elapses, so client isn't flooded with replies from multiple servers at the same time"
 		(request timeout * delayGenerator next ) wait.
-	aSocket
+	"Send the packet 3 times, to be more reliable on wireless. If it still fails, client will still
+	see us, as soon as it manages to receive the first alive notification"
+	3 timesRepeat: [aSocket
 		sendUDPData: service discoveryResponse
 		toHost: destAddress
-		port: destPort ] forkAt: Processor activeProcess priority + 1
+		port: destPort ]] forkAt: Processor activeProcess priority + 1
 ]
 
 { #category : #'initialize - release' }
