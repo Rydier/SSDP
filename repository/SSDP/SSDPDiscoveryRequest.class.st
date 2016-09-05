@@ -26,7 +26,7 @@ SSDPDiscoveryRequest >> initializeFrom: aDatagram [
 	serviceType :=  headers at: 'St'.
 	"Reply required within timeout, default within 1 second. 
 	Squeak Number >> #asDuration gives nanoseconds, not seconds, so set duration as seconds explicitly"
-	timeout := Duration seconds: (headers at:'Mx' ifAbsent: [1]).
+	timeout := Duration seconds: (headers at:'Mx' ifAbsent: [1]) asNumber.
 	
 ]
 
