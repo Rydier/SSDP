@@ -103,8 +103,8 @@ SSDPParticipant >> initializeSocketsForInterface: localInterface [
 SSDPParticipant >> initializeSocketsOn: localInterfaces [
 	listeningSockets := OrderedCollection new.
 	sendingSockets := OrderedCollection new.
-	localInterfaces
-		do:
+	^localInterfaces
+		select:
 			[ :localInterfaceAddress | 
 			self initializeSocketsForInterface: localInterfaceAddress ]
 ]
@@ -191,8 +191,8 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 		ifFalse: [
 	domainIx := host lastIndexOf: $..
 	domainIx > 0 
-		ifTrue: [host := (host copyUpTo: $.) ,  (host copyFrom: domainIx to: host size)] 
-		ifFalse: [host := host, '.local']].
+		ifTrue: [host := (host copyUpTo: $.) ] .
+	host := host, '.local'].
 	
 	NetNameResolver
 		primGetAddressInfoHost: host
@@ -283,7 +283,7 @@ SSDPParticipant >> readSenderAndDatagramFrom: aSocket using: buffer [
 { #category : #'initialize - release' }
 SSDPParticipant >> startUp [
 	"Let socket finalization handle release of resources; but ensure sockets are valid when we start up"
-	runningOn := (self localAddressesFor: multicastInfo host).
-	self initializeSocketsOn: runningOn
+	runningOn := 
+	self initializeSocketsOn: (self localAddressesFor: multicastInfo host).
 	
 ]
