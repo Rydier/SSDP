@@ -69,13 +69,14 @@ SSDPClient >> discover: aServiceType available: aHandler [
 	sendingSockets
 		do:
 			[ : discoverySocket | | latestArrivalTime| 
-			discoverySocket
+			[discoverySocket
 				sendUDPData:
 					(self
 						discoveryRequest: aServiceType
 						receivingAnswersIn: receiveWindow)
 				toHost: multicastInfo host
-				port: multicastInfo port.
+				port: multicastInfo port] on: PrimitiveFailed do: ["Socket will be invalid after waking up from sleep mode and fail to send. This means listening socket is also not receiving notifications properly, so the best we can do is restart client automatically, recreating valid sockets and repopulating available services."
+					[ self shutDown; startUp ] fork].
 			
 			latestArrivalTime := (DateAndTime now 
 				+ (receiveWindow * 2)).
@@ -124,15 +125,6 @@ SSDPClient >> discover: aServiceType on: discoverySocket available: aHandler [
 				using: buffer.
 			((SSDPDiscoveryReply fromDatagram: datagram) serviceChangeIn: cache)
 				ifNotNil: [ :service | aHandler value: service ] ]
-]
-
-{ #category : #processes }
-SSDPClient >> discoveryProcessFor: aServiceType available: aHandler [
-	"Use a separate process running discovery; don't wait for receiveWindow to expire before starting listening to Availability updates.
-	Will terminate some time after receiveWindow expires"
-
-	^ [ self discover: aServiceType available: aHandler ] newProcess
-		name: 'SSDP<client:' , aServiceType , '> discovery process'
 ]
 
 { #category : #processes }
@@ -218,7 +210,10 @@ SSDPClient >> receiveWindow: aDuration [
 SSDPClient >> shutDown [
 	listenerProcesses
 		ifNotNil: [ listenerProcesses do: #terminate.
-			cachePruningProcess terminate ]
+			cachePruningProcess terminate ].
+	"Notify clients that the services will no longer be available"
+	[cache isEmpty] whileFalse:[
+		unavailableHandler value:(cache removeService:cache first) ]
 ]
 
 { #category : #'initialize - release' }

@@ -1,7 +1,10 @@
 "
-SSDPCache holds Services in an order sorted by their expiry time.
-The two public methods are 
-updateServiceFor: and removeService: , used to keep cache current with availability/unavailability notifications respectively.
+SSDPCache holds Services ordered by expiry time, so the next expiring service can always be queried using #first.
+
+updateServiceFor: and removeServiceFor:  constitute the public API used to keep cache current with availability/unavailability notifications, while removeService: is used for timing-based expiry. 
+
+
+
 "
 Class {
 	#name : #SSDPCache,
@@ -21,13 +24,16 @@ SSDPCache class >> for: aServiceType [
 
 { #category : #accessing }
 SSDPCache >> first [
+	"This method blocks until an entry is available"
 	entrySemaphore wait.
 	^[super first] ensure: [entrySemaphore signal ]
 ]
 
 { #category : #'initialize - release' }
 SSDPCache >> initialize [
+	"EntrySemaphore excessSignals is a counter of current items in the cache, used to block on #first sends until entries are available."
 	entrySemaphore := Semaphore new.
+	"Since both discovery and automatic expulsion processes can end up removing services, we protect add and remove operations by this mutex."
 	accessMutex := Mutex new.
 ]
 
@@ -122,6 +128,7 @@ SSDPCache >> updateServiceFor: aNotification [
 { #category : #private }
 SSDPCache >> updateServicePosition: startLink [
 	| currentLink actualService nextLink|
+	"Move startLink to new location in cache, after its cacheExpiry has been increased"
 	currentLink := startLink.
 	actualService := currentLink value.
 	[
