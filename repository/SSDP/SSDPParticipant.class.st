@@ -51,6 +51,23 @@ SSDPParticipant class >> v6SiteLocal [
 	^self new initializev6SiteLocal
 ]
 
+{ #category : #private }
+SSDPParticipant >> hostName [
+	|host domainIx|
+	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
+	NetNameResolver initializeNetwork.
+	host := NetNameResolver localHostName.
+	"Strip out any subdomains, to get the most available interfaces, local if none in name so we do a dns lookup, instead of returning loopback ip"
+	"if host is just an ip address do nothing"
+	(host copyUpTo: $.) isAllDigits
+		ifFalse: [
+	domainIx := host lastIndexOf: $..
+	domainIx > 0 
+		ifTrue: [host := (host copyUpTo: $.) ] .
+	host := host, '.local'].
+	^host
+]
+
 { #category : #'initialize - release' }
 SSDPParticipant >> initializeSocketsForInterface: localInterface [
 	"Setup sockets that can listen and send data to the multicast address on the subnet of localInterface"
@@ -170,7 +187,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	1 = ipv6
 	2 = ipv4"
 
-	| ipOffsets protocol type host result domainIx |
+	| ipOffsets protocol type host result |
 	"ipv4 address found from 13-16 in address object, ipv6 from 15-32 "
 	ipOffsets := #(#[ 15 32 ] #[ 13 16 ]).
 	"Protocol:
@@ -182,17 +199,7 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 	protocol := 2.
 	type := protocol.
 	"Obviously, we can't just pass in '' to mean all local addresses, that either resolves to the 'let OS decide' or loopback address depending on flags... So we need to jump some hoops to get the actual network interfaces based on localHostName."
-	"Remember to set UseOldNetworking to false when running on Squeak, otherwise localHostName is likely to return a helpful '127.0.0.1' or similar"
-	NetNameResolver initializeNetwork.
-	host := NetNameResolver localHostName.
-	"Strip out any subdomains, to get the most available interfaces, local if none in name so we do a dns lookup, instead of returning loopback ip"
-	"if host is just an ip address do nothing"
-	(host copyUpTo: $.) isAllDigits
-		ifFalse: [
-	domainIx := host lastIndexOf: $..
-	domainIx > 0 
-		ifTrue: [host := (host copyUpTo: $.) ] .
-	host := host, '.local'].
+	host := self hostName.
 	
 	NetNameResolver
 		primGetAddressInfoHost: host
