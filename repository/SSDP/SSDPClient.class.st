@@ -212,7 +212,7 @@ SSDPClient >> shutDown [
 		ifNotNil: [ listenerProcesses do: #terminate.
 			cachePruningProcess terminate ].
 	"Notify clients that the services will no longer be available"
-	[cache isEmpty] whileFalse:[
+	[cache isNil or: [cache isEmpty]] whileFalse:[
 		unavailableHandler value:(cache removeService:cache first) ]
 ]
 

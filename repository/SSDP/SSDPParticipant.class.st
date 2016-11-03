@@ -61,10 +61,10 @@ SSDPParticipant >> hostName [
 	"if host is just an ip address do nothing"
 	(host copyUpTo: $.) isAllDigits
 		ifFalse: [
-	domainIx := host lastIndexOf: $..
+	OSPlatform current isMacOSX ifFalse: [domainIx := host lastIndexOf: $..
 	domainIx > 0 
 		ifTrue: [host := (host copyUpTo: $.) ] .
-	host := host, '.local'].
+	host := host, '.local'].].
 	^host
 ]
 
