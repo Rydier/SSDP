@@ -74,7 +74,7 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 SSDPServer >> discoveryListeningProcessOn: aListeningSocket [
 	^ [ | buffer senderAndDatagram |
 	buffer := ByteArray new: 1024.
-	[ aListeningSocket waitForData.
+	[ aListeningSocket waitForDataIfClosed: [  ] .
 	senderAndDatagram := self
 		readSenderAndDatagramFrom: aListeningSocket
 		using: buffer.

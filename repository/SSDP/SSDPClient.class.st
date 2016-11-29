@@ -181,7 +181,7 @@ SSDPClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAvail
 
 	buffer := String new: 1024.
 	[ | datagram  |
-	aSocket waitForData.
+	aSocket waitForDataIfClosed: [].
 
 	datagram := self readDatagramFrom: aSocket using: buffer.
 	(SSDPMessage from: datagram) 
