@@ -141,7 +141,7 @@ SSDPServer >> initializeSocketsForInterface: localInterface [
 SSDPServer >> initializeSocketsOn: localInterfaces [
 	"A server needs sockets not bound to the multicast address when replying to discovery requests"
 	replySockets := OrderedCollection new.
-	super initializeSocketsOn: localInterfaces
+	^super initializeSocketsOn: localInterfaces
 ]
 
 { #category : #starting }
