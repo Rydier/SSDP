@@ -61,7 +61,7 @@ SSDPParticipant >> hostName [
 	"if host is just an ip address do nothing"
 	(host copyUpTo: $.) isAllDigits
 		ifFalse: [
-	OSPlatform current isMacOSX ifFalse: [domainIx := host lastIndexOf: $..
+	Smalltalk os platformName = 'Mac OS' ifFalse: [domainIx := host lastIndexOf: $..
 	domainIx > 0 
 		ifTrue: [host := (host copyUpTo: $.) ] .
 	host := host, '.local'].].
