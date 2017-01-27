@@ -54,11 +54,12 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 	2 timesRepeat: announceAlive.
 	[announceAlive value. (service maxAge // 4) wait  ] repeat ]
 		on: PrimitiveFailed
-		do: [ self shutDown ]
-	"If we failed, it means my interface is no longer valid"
-	"Could rescan available interfaces, but for now, just restart server by triggering termination" ]
+		do: ["If we failed, it probably means my interface is no longer valid. 
+			Run shutdown of server, which will signal byebye on still running interfaces by ensure: block.
+			Primitive fail from that is handled below"
+				 self shutDown ] ]
 		ensure:
-			[ [ "All good things are three.
+			[[  "All good things are three.
 				Prefer some duplicated traffic over having to wait for cache timeout when a single packet fails delivery.)"
 				3 timesRepeat: [aSendingSocket
 				sendUDPData: (service byebyeResponseFor: multicastInfo)
@@ -66,8 +67,13 @@ SSDPServer >> aliveAnnouncingProcessOn: aSendingSocket [
 				port: multicastInfo port ]]
 				on: PrimitiveFailed
 				do:
-					[ [ self offerService: service ] fork ]	"Termination triggered due to unavailability; fork of a restart which will scan currently available interfaces" ] ]
-		newProcess name: 'SSDP<server:', service serviceType,'> keepalive process'
+					[  
+					["Termination triggered on this socket due to unavailability.
+					Let the user handle this, if not, do a restart (which will scan and start on currently available interfaces)"
+					socketFailHandler 
+						ifNotNil: [socketFailHandler cull: self cull: service cull: aSendingSocket]
+						ifNil: [ self offerService: service ]] forkAt: Processor activeProcess priority - 1 ]	] ]
+			 newProcess name: 'SSDP<server:', service serviceType,'> keepalive process'
 ]
 
 { #category : #'private - discovery' }
@@ -146,19 +152,34 @@ SSDPServer >> initializeSocketsOn: localInterfaces [
 
 { #category : #starting }
 SSDPServer >> offerService: anSSDPService [
+	^self offerService: anSSDPService onSocketFail: nil
+]
+
+{ #category : #starting }
+SSDPServer >> offerService: anSSDPService onSocketFail: aSocketFailHandler [
 	self shutDown.
 	service := anSSDPService.
 	service serverInfo: self versionInfo.
+	socketFailHandler := aSocketFailHandler.
 	self startUp.
 ]
 
 { #category : #starting }
 SSDPServer >> offerServiceType: aServiceType atLocation: aLocation [
 	^ self
+		offerServiceType: aServiceType
+		atLocation: aLocation
+		onSocketFail: nil
+]
+
+{ #category : #starting }
+SSDPServer >> offerServiceType: aServiceType atLocation: aLocation onSocketFail: aSocketFailHandler [
+	^ self
 		offerService:
 			(SSDPService
 				ofType: aServiceType
 				atLocation: aLocation)
+		onSocketFail: aSocketFailHandler
 ]
 
 { #category : #'private - discovery' }

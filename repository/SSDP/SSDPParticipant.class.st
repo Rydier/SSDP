@@ -13,6 +13,8 @@ Both listening and sending sockets must have been added to the multicast group;
 
 Any attempt to send data to addresses other than the multicast addresses on sockets that have been bound to the multicast group  WILL FAIL, so if a reply should be sent directly to some address, the participant must create the sockets over which these are sent separately.
 
+By default, participants will try to rediscover currently available interfaces, and restart running on these if a PrimitiveError is signalled by a socket. If custom handling is required, participants can be initialized with a special handler block, whose parameters are the participant itself, as well as the socket that error originated on. 
+
 "
 Class {
 	#name : #SSDPParticipant,
@@ -21,7 +23,8 @@ Class {
 		'listeningSockets',
 		'sendingSockets',
 		'multicastInfo',
-		'runningOn'
+		'runningOn',
+		'socketFailHandler'
 	],
 	#category : #'SSDP-Core'
 }

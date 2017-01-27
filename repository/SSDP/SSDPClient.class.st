@@ -75,8 +75,11 @@ SSDPClient >> discover: aServiceType available: aHandler [
 						discoveryRequest: aServiceType
 						receivingAnswersIn: receiveWindow)
 				toHost: multicastInfo host
-				port: multicastInfo port] on: PrimitiveFailed do: ["Socket will be invalid after waking up from sleep mode and fail to send. This means listening socket is also not receiving notifications properly, so the best we can do is restart client automatically, recreating valid sockets and repopulating available services."
-					[ self shutDown; startUp ] fork].
+				port: multicastInfo port] on: PrimitiveFailed do: ["Socket will be invalid when interface disappears, or after waking up from sleep mode and failing to send (due to multicast socket opts not being preserver, I think). This means listening socket is also not receiving notifications properly, so the best we can do, afte deferring handling to user defined block, is to restart client automatically, recreating valid sockets and repopulating available services."
+					[ self shutDown.
+					socketFailHandler 
+						ifNotNil: [socketFailHandler cull: self cull: serviceType cull: discoverySocket]
+						ifNil: [ self startUp ]] forkAt: Processor activeProcess priority - 1].
 			
 			latestArrivalTime := (DateAndTime now 
 				+ (receiveWindow * 2)).
@@ -151,12 +154,21 @@ ST:', searchTarget, '
 ]
 
 { #category : #starting }
-SSDPClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [
-	| discoveryProcess |
+SSDPClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler [ 
+	^ self
+		filter: aSearchTarget
+		whenAvailable: aHandler
+		whenUnavailable: anotherHandler
+		onSocketFail: nil
+]
+
+{ #category : #starting }
+SSDPClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler onSocketFail: aSocketFailHandler [
 	self shutDown.
 	serviceType := aSearchTarget.
 	availableHandler := aHandler.
 	unavailableHandler := anotherHandler.
+	socketFailHandler := aSocketFailHandler.
 	self startUp.
 ]
 
