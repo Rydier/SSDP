@@ -182,6 +182,38 @@ SSDPServer >> offerServiceType: aServiceType atLocation: aLocation onSocketFail:
 		onSocketFail: aSocketFailHandler
 ]
 
+{ #category : #'starting - all' }
+SSDPServer >> onAllInterfacesOfferService: anSSDPService [
+	^self onAllInterfacesOfferService: anSSDPService onSocketFail: nil
+]
+
+{ #category : #'starting - all' }
+SSDPServer >> onAllInterfacesOfferService: anSSDPService onSocketFail: aSocketFailHandler [
+	self shutDown.
+	service := anSSDPService.
+	service serverInfo: self versionInfo.
+	socketFailHandler := aSocketFailHandler.
+	self startUpOnAll.
+]
+
+{ #category : #'starting - all' }
+SSDPServer >> onAllInterfacesOfferServiceType: aServiceType atLocation: aLocation [
+	^ self
+		onAllInterfacesOfferServiceType: aServiceType
+		atLocation: aLocation
+		onSocketFail: nil
+]
+
+{ #category : #'starting - all' }
+SSDPServer >> onAllInterfacesOfferServiceType: aServiceType atLocation: aLocation onSocketFail: aSocketFailHandler [
+	^ self
+		onAllInterfacesOfferService:
+			(SSDPService
+				ofType: aServiceType
+				atLocation: aLocation)
+		onSocketFail: aSocketFailHandler
+]
+
 { #category : #'private - discovery' }
 SSDPServer >> replyToDiscoveryRequest: request from: aSender on: aReplySocket [
 
@@ -208,17 +240,26 @@ SSDPServer >> shutDown [
 
 { #category : #'initialize - release' }
 SSDPServer >> startUp [
-
 	super startUp.
+	self startUpSecondaryProcesses
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> startUpOnAll [
+	super startUpOnAll.
+	self startUpSecondaryProcesses
+]
+
+{ #category : #'initialize - release' }
+SSDPServer >> startUpSecondaryProcesses [
 	discoveryProcesses := listeningSockets
-		collect: [ :discoverySocket | 
-			self discoveryListeningProcessOn: discoverySocket ].
-	keepAliveProcesses := sendingSockets 
-		collect: [:keepAliveSocket | 
-			self aliveAnnouncingProcessOn: keepAliveSocket ].
+		collect:
+			[ :discoverySocket | self discoveryListeningProcessOn: discoverySocket ].
+	keepAliveProcesses := sendingSockets
+		collect:
+			[ :keepAliveSocket | self aliveAnnouncingProcessOn: keepAliveSocket ].
 	discoveryProcesses do: #resume.
-	keepAliveProcesses do: #resume.
-	
+	keepAliveProcesses do: #resume
 ]
 
 { #category : #accessing }

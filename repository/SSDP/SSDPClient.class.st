@@ -213,6 +213,16 @@ SSDPClient >> listenerProcessFor: aSearchTarget on: aSocket available: whenAvail
 		yourself
 ]
 
+{ #category : #starting }
+SSDPClient >> onAllInterfacesFilter: aSearchTarget whenAvailable: aHandler whenUnavailable: anotherHandler onSocketFail: aSocketFailHandler [
+	self shutDown.
+	serviceType := aSearchTarget.
+	availableHandler := aHandler.
+	unavailableHandler := anotherHandler.
+	socketFailHandler := aSocketFailHandler.
+	self startUpOnAll.
+]
+
 { #category : #accessing }
 SSDPClient >> receiveWindow: aDuration [
 	receiveWindow := aDuration

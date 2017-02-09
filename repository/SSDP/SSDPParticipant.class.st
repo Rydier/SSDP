@@ -54,6 +54,38 @@ SSDPParticipant class >> v6SiteLocal [
 	^self new initializev6SiteLocal
 ]
 
+{ #category : #'private - interface enumeration' }
+SSDPParticipant >> allLocalAddressesFor: aMulticastAddress [
+	^ aMulticastAddress size = 4
+		ifTrue: [ self allLocalV4Addresses ]
+		ifFalse: [ self allLocalV6Addresses ]
+]
+
+{ #category : #'private - interface enumeration' }
+SSDPParticipant >> allLocalV4Addresses [
+	"Pharo has removed all support classes and calls to the ipv6-aware primitives, 
+	amongst them the ones needed to find local interfaces.
+	Inline their use here, so it works for both Pharo and Squeak"
+	^self localAddresses: 2 port: self ipv4Port.
+]
+
+{ #category : #'private - interface enumeration' }
+SSDPParticipant >> allLocalV6Addresses [
+	^self notYetImplemented 
+]
+
+{ #category : #'private - interface enumeration' }
+SSDPParticipant >> defaultLocalV4Addresses [
+	"A meta-address used to let the system determine which interface to bind a port on"
+	^#(#[0 0 0 0])
+]
+
+{ #category : #'private - interface enumeration' }
+SSDPParticipant >> defaultLocalV6Addresses [
+	"A meta-address used to let the system determine which interface to bind a port on"
+	^self notYetImplemented 
+]
+
 { #category : #private }
 SSDPParticipant >> hostName [
 	|host domainIx|
@@ -228,16 +260,8 @@ SSDPParticipant >> localAddresses: aFamily port: aPort [
 { #category : #'private - interface enumeration' }
 SSDPParticipant >> localAddressesFor: aMulticastAddress [
 	^ aMulticastAddress size = 4
-		ifTrue: [ self localV4Addresses ]
-		ifFalse: [ self localV6Addresses ]
-]
-
-{ #category : #'private - interface enumeration' }
-SSDPParticipant >> localV4Addresses [
-	"Pharo has removed all support classes and calls to the ipv6-aware primitives, 
-	amongst them the ones needed to find local interfaces.
-	Inline their use here, so it works for both Pharo and Squeak"
-	^self localAddresses: 2 port: self ipv4Port.
+		ifTrue: [ self defaultLocalV4Addresses ]
+		ifFalse: [ self defaultLocalV6Addresses ]
 ]
 
 { #category : #accessing }
@@ -295,5 +319,13 @@ SSDPParticipant >> startUp [
 	"Let socket finalization handle release of resources; but ensure sockets are valid when we start up"
 	runningOn := 
 	self initializeSocketsOn: (self localAddressesFor: multicastInfo host).
+	
+]
+
+{ #category : #'initialize - release' }
+SSDPParticipant >> startUpOnAll [
+	"Let socket finalization handle release of resources; but ensure sockets are valid when we start up"
+	runningOn := 
+	self initializeSocketsOn: (self allLocalAddressesFor: multicastInfo host).
 	
 ]
