@@ -37,7 +37,9 @@ client filter: 'ssdp:all'
 ```
 
 More detailed documentation can be found in the class comments.
+
 If you read the later draft, and discover something is not in accordance, please open an issue or send a pull request.
+
 If you implement a better way of discovering available local interfaces (which is the worst part of the code as is) to start SSDP listeners on, I'd especially appreciate to be notified!
 
 Migrated from http://smalltalkhub.com/#!/~henriksp/SSDP 
