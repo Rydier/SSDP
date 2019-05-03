@@ -46,19 +46,26 @@ SSDPAvailable >> initializeFrom: aDatagram [
 	stream nextLine trim = 'NOTIFY * HTTP/1.1' ifFalse: [ ^nil ].
 	headers := ZnHeaders readFrom: stream.
 	(headers at: 'Nts') = 'ssdp:alive' ifFalse: [ ^nil ].
-	"Obligatory SSDP notify fields"
+	"Mandatory SSDP notify fields"
 	serviceType :=  headers at: 'Nt'.
 	uniqueServiceName :=  headers at: 'Usn'.
+
+	"Use local clock for discoveryTime. "
+	discoveryTime := DateAndTime now.
 	"Cache control fields"
-	"TODO: Convert to DateAndTime if actually present"
-	discoveryTime :=  headers at:'Date' ifAbsent: [ DateAndTime now].
 	cacheParams := ( headers at: 'Cache-control' ifAbsent: ['']) splitOn: ',' .
-	"Could also be communicated through Expiry field, only support maxAge for now"
-	maxAge := (  (cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: '0') splitOn: '=') last trim asNumber seconds.
+	maxAge := cacheParams detect: [:one | one beginsWith: 'max-age'] ifNone: [nil].
+	maxAge 
+		ifNotNil: [ maxAge := (maxAge  splitOn: '=' ) last trim asNumber seconds ]
+		ifNil: [ (self maxAgeFromExpiresField: headers) 
+			ifNil: ["Not found, don't cache"
+				0 seconds] ].
+	
 	"Common SSDP notify fields"
 	
 	serverInfo :=  headers at: 'Server' ifAbsent: nil.
-	location :=  (headers at: 'Location' ifAbsent: nil) ifNotNil: [:locString | locString asUrl].
+	location :=  (headers at: 'Location' ifAbsent: 
+					[headers at: 'AL' ifAbsent: [nil]]) ifNotNil: [:locString | locString asUrl].
 	
 ]
 
@@ -70,6 +77,15 @@ SSDPAvailable >> location [
 { #category : #accessing }
 SSDPAvailable >> maxAge [
 	^maxAge
+]
+
+{ #category : #'initialize - release' }
+SSDPAvailable >> maxAgeFromExpiresField: headers [
+	"This is where we'd calculate the diff between Date and Expires header fields."
+	
+	"BUT, pharo doesn't contain parsers for dates in format defined by RFC 7231
+	(Thu, 01 Dec 1994 16:00:00 GMT) and most SSDP will use max-age, so leave unimplemented for now"
+	^nil
 ]
 
 { #category : #accessing }
