@@ -175,7 +175,7 @@ SSDPClient >> filter: aSearchTarget whenAvailable: aHandler whenUnavailable: ano
 { #category : #'initialize - release' }
 SSDPClient >> initialize [
 	"By default, receive all responses in less than a second. Increasing this will spread out processing of responses, as each service will delay for (0 to: receiveWindow) atRandom before responding"
-	super initialize.
+	super initialize. 
 
 	receiveWindow := 3 seconds.
 	
